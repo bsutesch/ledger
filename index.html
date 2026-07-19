@@ -1954,11 +1954,15 @@ function RAS() {
     onOpen: setActiveProject,
     onImport: payload => {
       setState(s => {
-        if (s.mode === "spreadsheet") {
-          // Source of truth is the spreadsheet: wipe data, keep settings/mode/ai.
+        // Uploading a spreadsheet makes that file the single source of truth:
+        // replace the data and lock editing (spreadsheet mode). A JSON backup
+        // restore (__ledgerExport) is exempt — it carries its own saved mode.
+        // Managed mode is only for recommendations entered directly in Ledger.
+        const fromSpreadsheet = payload && !payload.__ledgerExport;
+        if (fromSpreadsheet || s.mode === "spreadsheet") {
           s = {
             ...emptyState(),
-            mode: s.mode,
+            mode: fromSpreadsheet ? "spreadsheet" : s.mode,
             ai: s.ai,
             settings: s.settings
           };
