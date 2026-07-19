@@ -541,6 +541,57 @@ function computeRAS(agg) {
   };
 }
 
+// Rebuild a month-by-month RAS series from a project's recommendations, using
+// each rec's createdMonth (the month it was communicated) and statusMonth (the
+// month it reached its status, from Date Fixed). This lets a single tracker or
+// template import draw a real trend line instead of a single current-month
+// point. The math per month is identical to computeRAS: a rec only enters the
+// pool once it has been communicated, and its final status (adopted/committed)
+// only earns points from its status month onward; before that it counts as
+// communicated. Canceled rows are excluded from the pool entirely.
+function rebuildRasSeriesFromRecs(recs) {
+  const list = (recs || []).filter(r => r && r.status !== "canceled" && r.createdMonth);
+  if (!list.length) return {};
+  let lo = null,
+    hi = null;
+  for (const r of list) {
+    const c = r.createdMonth,
+      s = r.statusMonth || r.createdMonth;
+    if (c && (lo == null || c < lo)) lo = c;
+    if (c && (hi == null || c > hi)) hi = c;
+    if (s && (hi == null || s > hi)) hi = s;
+  }
+  if (!lo || !hi) return {};
+  const out = {};
+  let m = lo,
+    guard = 0;
+  while (m <= hi && guard++ < 600) {
+    const agg = {
+      highTotal: 0, medTotal: 0, lowTotal: 0,
+      highAdopted: 0, medAdopted: 0, lowAdopted: 0,
+      committed: 0, communicated: 0, canceled: 0, total: 0
+    };
+    for (const r of list) {
+      if (r.createdMonth > m) continue; // not yet communicated this month
+      agg.total++;
+      if (r.impact === "high") agg.highTotal++;else if (r.impact === "medium") agg.medTotal++;else if (r.impact === "low") agg.lowTotal++;
+      const sm = r.statusMonth || r.createdMonth;
+      let statusAt = "communicated";
+      if ((r.status === "adopted" || r.status === "committed") && sm <= m) statusAt = r.status;
+      if (statusAt === "adopted") {
+        if (r.impact === "high") agg.highAdopted++;else if (r.impact === "medium") agg.medAdopted++;else if (r.impact === "low") agg.lowAdopted++;
+      } else if (statusAt === "committed") {
+        agg.committed++;
+      } else {
+        agg.communicated++;
+      }
+    }
+    if (agg.total > 0) out[m] = computeRAS(agg).ras;
+    m = ymAdd(m, 1);
+  }
+  return out;
+}
+
 // ─── INVESTMENT SIGNALS [2] ────────────────────────────────────────────────────
 
 // Velocity = average recommendations created per month over the last 3 months.
@@ -2519,6 +2570,25 @@ function mergeImport(state, payload) {
         }
         if (!isActive) archived++;
       }
+    }
+    // Rebuild each project's monthly RAS trend from its recommendation dates so a
+    // single tracker/template import shows a real trend, not one point. Any RAS
+    // month already present from an explicit history import takes precedence.
+    const recsByProject = {};
+    for (const r of next.recs) (recsByProject[r.projectId] = recsByProject[r.projectId] || []).push(r);
+    for (const pid of Object.keys(recsByProject)) {
+      const rebuilt = rebuildRasSeriesFromRecs(recsByProject[pid]);
+      const prev = next.history[pid] || {
+        ras: {},
+        created: {}
+      };
+      next.history[pid] = {
+        ...prev,
+        ras: {
+          ...rebuilt,
+          ...(prev.ras || {})
+        }
+      };
     }
     next.__lastImport = {
       kind: "tracker",
