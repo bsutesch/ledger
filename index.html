@@ -1763,6 +1763,15 @@ function RAS() {
       setShowOnboarding(false);
       setShowTemplate(true);
       flash("Spreadsheet mode. Import your tracker to visualize it.");
+    },
+    onSkip: () => {
+      setState(s => ({
+        ...emptyState(),
+        mode: "managed",
+        ai: s.ai
+      }));
+      setShowOnboarding(false);
+      flash("You can choose your data mode anytime in Settings.");
     }
   }), showAbout && /*#__PURE__*/React.createElement("div", {
     onClick: () => setShowAbout(false),
@@ -2707,6 +2716,42 @@ async function exportXLSX(state, projectData) {
     wch: 14
   }];
   const wb = XLSX.utils.book_new();
+  wsRecs["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: {
+        r: 0,
+        c: 0
+      },
+      e: {
+        r: recRows.length,
+        c: 12
+      }
+    })
+  };
+  wsProj["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: {
+        r: 0,
+        c: 0
+      },
+      e: {
+        r: projRows.length,
+        c: 16
+      }
+    })
+  };
+  wsSig["!autofilter"] = {
+    ref: XLSX.utils.encode_range({
+      s: {
+        r: 0,
+        c: 0
+      },
+      e: {
+        r: sigRows.length,
+        c: 9
+      }
+    })
+  };
   XLSX.utils.book_append_sheet(wb, wsRecs, "Recommendations");
   XLSX.utils.book_append_sheet(wb, wsProj, "Project RAS");
   XLSX.utils.book_append_sheet(wb, wsSig, "Investment Signals");
@@ -2817,7 +2862,8 @@ function InsightTile({
 function OnboardingWizard({
   onManaged,
   onManagedExample,
-  onSpreadsheet
+  onSpreadsheet,
+  onSkip
 }) {
   const [step, setStep] = useState(0);
   const card = {
@@ -2890,9 +2936,22 @@ function OnboardingWizard({
     }, "First, choose how you\u2019ll manage your recommendations:"), React.createElement("div", {
       style: {
         display: "flex",
-        justifyContent: "flex-end"
+        justifyContent: "space-between",
+        alignItems: "center"
       }
     }, React.createElement("button", {
+      onClick: onSkip,
+      style: {
+        fontFamily: T.font,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        color: T.textMuted,
+        background: "transparent",
+        border: "none",
+        padding: "6px 0"
+      }
+    }, "Skip for now"), React.createElement("button", {
       onClick: () => setStep(1),
       style: {
         fontFamily: T.font,
@@ -3075,6 +3134,18 @@ function TemplateGuide({
       }, {
         wch: 62
       }];
+      wsP["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: {
+            r: 0,
+            c: 0
+          },
+          e: {
+            r: projects.length - 1,
+            c: 3
+          }
+        })
+      };
       XLSX.utils.book_append_sheet(wb, wsP, "Projects");
 
       // — Recommendations sheet —
@@ -3107,6 +3178,18 @@ function TemplateGuide({
       }, {
         wch: 12
       }];
+      wsR["!autofilter"] = {
+        ref: XLSX.utils.encode_range({
+          s: {
+            r: 0,
+            c: 0
+          },
+          e: {
+            r: recs.length - 1,
+            c: 12
+          }
+        })
+      };
       XLSX.utils.book_append_sheet(wb, wsR, "Recommendations");
 
       // — How to use sheet —
@@ -3197,7 +3280,7 @@ function TemplateGuide({
       color: T.textBright,
       margin: "16px 0 6px"
     }
-  }, "Option A: The Ledger template (recommended)"), React.createElement("p", {
+  }, "Importing from a spreadsheet (recommended)"), React.createElement("p", {
     style: {
       fontSize: 13,
       color: T.textSecondary,
@@ -3216,16 +3299,79 @@ function TemplateGuide({
       fontSize: 14,
       fontWeight: 700,
       color: T.textBright,
-      margin: "16px 0 6px"
+      margin: "20px 0 6px"
     }
-  }, "Option B: A history workbook (XLSX)"), React.createElement("p", {
+  }, "Building your own spreadsheet"), React.createElement("p", {
     style: {
       fontSize: 13,
       color: T.textSecondary,
       lineHeight: 1.6,
-      margin: "0 0 8px"
+      margin: "0 0 10px"
     }
-  }, "A workbook with monthly \"RAS (Mon\u2019YY)\" sheets and a \"Summary (Staffing)\" tab provides full historical RAS and investment-status series. Use Import history for this file."), React.createElement("div", {
+  }, "You don\u2019t have to use the template. Any .xlsx or .csv with the right column headers will work. The header row must be row 1. Column order doesn\u2019t matter. Here\u2019s what Ledger looks for:"), React.createElement("table", {
+    style: {
+      width: "100%",
+      borderCollapse: "collapse",
+      fontSize: 12.5,
+      marginBottom: 10
+    }
+  }, React.createElement("thead", null, React.createElement("tr", {
+    style: {
+      borderBottom: `2px solid ${T.border}`,
+      textAlign: "left"
+    }
+  }, React.createElement("th", {
+    style: {
+      padding: "6px 8px",
+      color: T.textBright,
+      fontWeight: 700
+    }
+  }, "Column header"), React.createElement("th", {
+    style: {
+      padding: "6px 8px",
+      color: T.textBright,
+      fontWeight: 700
+    }
+  }, "Required?"), React.createElement("th", {
+    style: {
+      padding: "6px 8px",
+      color: T.textBright,
+      fontWeight: 700
+    }
+  }, "Notes"))), React.createElement("tbody", null, [["Project", "Yes", "Exact word. The product or workstream name."], ["Recommendation", "Yes", "The column must contain the word \u201cRecommendation.\u201d"], ["Status", "No", "adopted, committed, communicated, canceled, deferred, or rejected. Defaults to communicated if missing."], ["Impact", "No", "high, medium, or low. \u201cPriority\u201d also works. Defaults to medium."], ["Owner", "No", "The person accountable. \u201cResearcher\u201d also works."], ["Recommendation ID", "No", "Any unique text. Needed for re-imports to update instead of duplicate. \u201cID\u201d also works."], ["Date Communicated", "No*", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. *Required for velocity to calculate correctly."], ["Date Fixed", "No", "YYYY-MM or M/D/YYYY. When the recommendation was adopted."], ["Done Definition", "No", "What \u201cdone\u201d looks like. \u201cDescription\u201d or \u201cComment\u201d also work."], ["Evidence", "No", "A link to the study."], ["Jira", "No", "A ticket reference."], ["Impacted Task", "No", "The user task this recommendation affects."], ["AI Recommendation", "No", "TRUE or FALSE. Lets Ledger compare AI vs non-AI adoption."]].map((r, i) => React.createElement("tr", {
+    key: i,
+    style: {
+      borderBottom: `1px solid ${T.border}`
+    }
+  }, React.createElement("td", {
+    style: {
+      padding: "6px 8px",
+      color: T.textBright,
+      fontWeight: 600,
+      fontFamily: T.mono,
+      fontSize: 11.5,
+      whiteSpace: "nowrap"
+    }
+  }, r[0]), React.createElement("td", {
+    style: {
+      padding: "6px 8px",
+      color: r[1] === "Yes" ? T.accent : T.textMuted,
+      fontWeight: 600
+    }
+  }, r[1]), React.createElement("td", {
+    style: {
+      padding: "6px 8px",
+      color: T.textSecondary,
+      lineHeight: 1.45
+    }
+  }, r[2]))))), React.createElement("p", {
+    style: {
+      fontSize: 12.5,
+      color: T.textMuted,
+      lineHeight: 1.55,
+      margin: "0 0 4px"
+    }
+  }, "If your workbook also has a sheet named \u201cProjects\u201d with a \u201cProject\u201d column and a \u201cStatus\u201d column (Active or Archived), Ledger reads that to set which products are active."), React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
@@ -4393,18 +4539,18 @@ function parseTrackerRows(rows) {
   const col = re => header.findIndex(h => re.test(h));
   const ci = {
     project: col(/^project$/i),
-    id: col(/^id$/i),
+    id: col(/^(id|recommendation id)$/i),
     rec: col(/recommendation/i),
-    priority: col(/priority/i),
+    priority: col(/priority|^impact$/i),
     status: col(/^status$/i),
-    desc: col(/description|comment/i),
+    desc: col(/description|comment|done definition/i),
     task: col(/impacted task/i),
     ai: col(/ai recommendation/i),
     communicated: col(/date communicated/i),
     fixed: col(/date fixed/i),
     evidence: col(/evidence/i),
     jira: col(/jira/i),
-    researcher: col(/^researcher/i)
+    researcher: col(/^researcher$|^owner$/i)
   };
   if (ci.project < 0 || ci.rec < 0) return {
     trackerRecs: [],
@@ -4464,7 +4610,7 @@ function parseTrackerRows(rows) {
       evidence: get(row, ci.evidence),
       jira: get(row, ci.jira),
       impactedTask: get(row, ci.task),
-      isAI: get(row, ci.ai).toLowerCase() === "yes",
+      isAI: /^(yes|true)$/i.test(get(row, ci.ai)),
       createdMonth: created,
       statusMonth: ym(get(row, ci.fixed)) || created
     });
@@ -7169,7 +7315,7 @@ ${compressVoice(voice)}`;
       borderRadius: "50%",
       background: T.warning
     }
-  }), " Time to act or let go"), /*#__PURE__*/React.createElement("div", {
+  }), " Time to act"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: T.textMuted,
