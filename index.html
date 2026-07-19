@@ -4279,7 +4279,7 @@ function Overview({
     key: p.id,
     p: p,
     onOpen: onOpen,
-    onToggleActive: () => onUpdateProject(p.id, {
+    onToggleActive: readOnly ? null : () => onUpdateProject(p.id, {
       active: true
     }),
     muted: true
