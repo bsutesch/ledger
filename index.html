@@ -4127,10 +4127,6 @@ function Overview({
   }, "Import recommendations"), /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     small: true,
-    onClick: () => fileRef.current?.click()
-  }, "Import history"), /*#__PURE__*/React.createElement(Btn, {
-    variant: "ghost",
-    small: true,
     onClick: onExport
   }, "Export JSON"), !readOnly && /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
@@ -4141,14 +4137,6 @@ function Overview({
     type: "file",
     accept: ".xlsx,.xls,.csv",
     onChange: e => handleFile(e, "tracker"),
-    style: {
-      display: "none"
-    }
-  }), /*#__PURE__*/React.createElement("input", {
-    ref: fileRef,
-    type: "file",
-    accept: ".json,.csv,.xlsx,.xls",
-    onChange: e => handleFile(e, "data"),
     style: {
       display: "none"
     }
