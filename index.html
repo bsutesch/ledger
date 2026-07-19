@@ -567,9 +567,16 @@ function rebuildRasSeriesFromRecs(recs) {
     guard = 0;
   while (m <= hi && guard++ < 600) {
     const agg = {
-      highTotal: 0, medTotal: 0, lowTotal: 0,
-      highAdopted: 0, medAdopted: 0, lowAdopted: 0,
-      committed: 0, communicated: 0, canceled: 0, total: 0
+      highTotal: 0,
+      medTotal: 0,
+      lowTotal: 0,
+      highAdopted: 0,
+      medAdopted: 0,
+      lowAdopted: 0,
+      committed: 0,
+      communicated: 0,
+      canceled: 0,
+      total: 0
     };
     for (const r of list) {
       if (r.createdMonth > m) continue; // not yet communicated this month
@@ -1217,8 +1224,8 @@ function ChartWrap({
       right: 4
     },
     br: {
-      bottom: 6,
-      right: 6
+      bottom: 8,
+      right: 8
     },
     tl: {
       top: 4,
@@ -1260,29 +1267,46 @@ function ChartWrap({
       position: "absolute",
       ...pos,
       zIndex: 10,
-      width: 22,
-      height: 22,
+      width: 24,
+      height: 24,
       padding: 0,
-      background: "transparent",
-      border: "none",
+      background: T.bgCard,
+      border: `1px solid ${T.border}`,
       borderRadius: 6,
       cursor: busy ? "wait" : "pointer",
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       color: T.textDim,
-      fontSize: 15,
-      lineHeight: 1,
-      opacity: busy ? 0.4 : 0.5,
-      transition: "opacity .15s"
+      opacity: busy ? 0.4 : 0.9,
+      transition: "opacity .15s, color .15s, border-color .15s"
     },
     onMouseEnter: e => {
       e.currentTarget.style.opacity = "1";
+      e.currentTarget.style.color = T.textBright;
+      e.currentTarget.style.borderColor = T.borderStrong;
     },
     onMouseLeave: e => {
-      e.currentTarget.style.opacity = busy ? "0.4" : "0.5";
+      e.currentTarget.style.opacity = busy ? "0.4" : "0.9";
+      e.currentTarget.style.color = T.textDim;
+      e.currentTarget.style.borderColor = T.border;
     }
-  }, "↓"));
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: 13,
+    height: 13,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round",
+    strokeLinejoin: "round"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M8 2.5v7.5"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M4.5 7 8 10.5 11.5 7"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M3 13.5h10"
+  }))));
 }
 const inputStyle = {
   width: "100%",
@@ -2081,245 +2105,981 @@ function RAS() {
       color: T.textMuted,
       fontWeight: 500
     }
-  }, "Ledger · © ", new Date().getFullYear()))));
+  }, "Ledger · A Polite Robot tool · © ", new Date().getFullYear(), " Polite Robot"))));
 }
 
 // ─── EXAMPLE / DEMO DATA ────────────────────────────────────────────────────────
 // Anonymized but realistic dataset that exercises every Ledger feature:
 // multiple projects, mixed statuses, RAS history, velocity, signals, owners.
+const EXAMPLE_PROJECTS = [{
+  name: "Checkout Redesign",
+  status: "Active",
+  owner: "Jordan Lee",
+  notes: "Primary revenue funnel. Adoption climbing."
+}, {
+  name: "Partner Portal",
+  status: "Active",
+  owner: "Alex Rivera",
+  notes: "B2B self-service. Recommendations piling up uncommitted."
+}, {
+  name: "Mobile Banking",
+  status: "Active",
+  owner: "Sam Patel",
+  notes: "iOS and Android apps. Strong but plateauing."
+}, {
+  name: "Employee Dashboard",
+  status: "Active",
+  owner: "Morgan Chen",
+  notes: "Internal ops tool. Low adoption."
+}, {
+  name: "Legacy Reports",
+  status: "Archived",
+  owner: "Priya Nair",
+  notes: "Sunset in Q4 2025. Kept for its history."
+}];
+const EXAMPLE_RECS = [{
+  id: "CKO-001",
+  project: "Checkout Redesign",
+  title: "Collapse checkout to a single page",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Steps reduced from four to one",
+  evidence: "https://example.com/study-1",
+  jira: "TKT-1041",
+  task: "Complete a purchase",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-06"
+}, {
+  id: "CKO-002",
+  project: "Checkout Redesign",
+  title: "Offer guest checkout without account creation",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Guest path available at entry",
+  evidence: "https://example.com/study-2",
+  jira: "TKT-1042",
+  task: "Start checkout",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-07"
+}, {
+  id: "CKO-003",
+  project: "Checkout Redesign",
+  title: "Add address autocomplete for shipping",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Autocomplete covers US and CA",
+  evidence: "https://example.com/study-3",
+  jira: "",
+  task: "Enter shipping address",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-08"
+}, {
+  id: "CKO-004",
+  project: "Checkout Redesign",
+  title: "Add Apple Pay and Google Pay",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Both wallets available at the pay step",
+  evidence: "https://example.com/study-4",
+  jira: "TKT-1050",
+  task: "Pay for an order",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-09"
+}, {
+  id: "CKO-005",
+  project: "Checkout Redesign",
+  title: "Show a persistent order summary",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Summary visible on every step",
+  evidence: "https://example.com/study-5",
+  jira: "",
+  task: "Review order",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: "2025-10"
+}, {
+  id: "CKO-006",
+  project: "Checkout Redesign",
+  title: "Move promo code entry below the payment fields",
+  impact: "medium",
+  status: "committed",
+  owner: "Jordan Lee",
+  done: "Field relocated in the build",
+  evidence: "https://example.com/study-6",
+  jira: "",
+  task: "Apply a discount",
+  ai: "FALSE",
+  communicated: "2025-07",
+  fixed: "2025-11"
+}, {
+  id: "CKO-007",
+  project: "Checkout Redesign",
+  title: "Pre-fill returning customer details",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Saved details load on sign-in",
+  evidence: "https://example.com/study-7",
+  jira: "TKT-1063",
+  task: "Complete a purchase",
+  ai: "TRUE",
+  communicated: "2025-08",
+  fixed: "2026-01"
+}, {
+  id: "CKO-008",
+  project: "Checkout Redesign",
+  title: "Clarify the security code field label",
+  impact: "low",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Label reads security code with helper text",
+  evidence: "https://example.com/study-8",
+  jira: "",
+  task: "Enter card details",
+  ai: "FALSE",
+  communicated: "2025-09",
+  fixed: "2025-12"
+}, {
+  id: "CKO-009",
+  project: "Checkout Redesign",
+  title: "Surface shipping cost before the payment step",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Cost shown on the cart page",
+  evidence: "https://example.com/study-9",
+  jira: "",
+  task: "Review order",
+  ai: "FALSE",
+  communicated: "2025-10",
+  fixed: "2026-02"
+}, {
+  id: "CKO-010",
+  project: "Checkout Redesign",
+  title: "Add inline card validation",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Errors show before submit",
+  evidence: "https://example.com/study-10",
+  jira: "TKT-1077",
+  task: "Enter card details",
+  ai: "TRUE",
+  communicated: "2025-11",
+  fixed: "2026-03"
+}, {
+  id: "CKO-011",
+  project: "Checkout Redesign",
+  title: "Let shoppers edit the cart from checkout",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Quantity editable in place",
+  evidence: "https://example.com/study-11",
+  jira: "",
+  task: "Adjust the cart",
+  ai: "FALSE",
+  communicated: "2026-01",
+  fixed: "2026-04"
+}, {
+  id: "CKO-012",
+  project: "Checkout Redesign",
+  title: "Add express one-tap reorder",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Reorder completes in a single tap",
+  evidence: "https://example.com/study-12",
+  jira: "TKT-1090",
+  task: "Reorder a previous purchase",
+  ai: "TRUE",
+  communicated: "2026-02",
+  fixed: "2026-05"
+}, {
+  id: "CKO-013",
+  project: "Checkout Redesign",
+  title: "Show an estimated delivery date at checkout",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Date shown before payment",
+  evidence: "https://example.com/study-13",
+  jira: "",
+  task: "Review order",
+  ai: "FALSE",
+  communicated: "2026-03",
+  fixed: "2026-06"
+}, {
+  id: "CKO-014",
+  project: "Checkout Redesign",
+  title: "Persist partial carts across sessions",
+  impact: "high",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Cart persists for 30 days",
+  evidence: "https://example.com/study-14",
+  jira: "TKT-1101",
+  task: "Resume checkout",
+  ai: "FALSE",
+  communicated: "2026-05",
+  fixed: "2026-06"
+}, {
+  id: "CKO-015",
+  project: "Checkout Redesign",
+  title: "Add a progress state to the pay button",
+  impact: "medium",
+  status: "adopted",
+  owner: "Jordan Lee",
+  done: "Loading and confirmation states added",
+  evidence: "https://example.com/study-15",
+  jira: "",
+  task: "Pay for an order",
+  ai: "TRUE",
+  communicated: "2026-05",
+  fixed: "2026-07"
+}, {
+  id: "CKO-016",
+  project: "Checkout Redesign",
+  title: "Introduce a buy-now-pay-later option",
+  impact: "high",
+  status: "committed",
+  owner: "Jordan Lee",
+  done: "Provider integrated in staging",
+  evidence: "https://example.com/study-16",
+  jira: "TKT-1120",
+  task: "Choose a payment plan",
+  ai: "FALSE",
+  communicated: "2026-06",
+  fixed: "2026-07"
+}, {
+  id: "CKO-017",
+  project: "Checkout Redesign",
+  title: "Add a gift-message field at checkout",
+  impact: "medium",
+  status: "communicated",
+  owner: "Jordan Lee",
+  done: "",
+  evidence: "https://example.com/study-17",
+  jira: "",
+  task: "Add a gift note",
+  ai: "FALSE",
+  communicated: "2026-06",
+  fixed: ""
+}, {
+  id: "CKO-018",
+  project: "Checkout Redesign",
+  title: "Localize currency display by region",
+  impact: "low",
+  status: "communicated",
+  owner: "Jordan Lee",
+  done: "",
+  evidence: "https://example.com/study-18",
+  jira: "",
+  task: "See prices in local currency",
+  ai: "TRUE",
+  communicated: "2026-07",
+  fixed: ""
+}, {
+  id: "PAR-001",
+  project: "Partner Portal",
+  title: "Add global search across the portal",
+  impact: "high",
+  status: "adopted",
+  owner: "Alex Rivera",
+  done: "Search returns documents and tickets",
+  evidence: "https://example.com/study-19",
+  jira: "TKT-2011",
+  task: "Find an answer without a ticket",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-05"
+}, {
+  id: "PAR-002",
+  project: "Partner Portal",
+  title: "Simplify partner onboarding to three steps",
+  impact: "medium",
+  status: "adopted",
+  owner: "Alex Rivera",
+  done: "Onboarding fits three screens",
+  evidence: "https://example.com/study-20",
+  jira: "",
+  task: "Onboard a new partner",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-06"
+}, {
+  id: "PAR-003",
+  project: "Partner Portal",
+  title: "Add role-based dashboards",
+  impact: "high",
+  status: "adopted",
+  owner: "Alex Rivera",
+  done: "Views differ by partner role",
+  evidence: "https://example.com/study-21",
+  jira: "TKT-2020",
+  task: "Open the dashboard",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-07"
+}, {
+  id: "PAR-004",
+  project: "Partner Portal",
+  title: "Consolidate duplicate navigation menus",
+  impact: "medium",
+  status: "adopted",
+  owner: "Alex Rivera",
+  done: "One navigation across the portal",
+  evidence: "https://example.com/study-22",
+  jira: "",
+  task: "Navigate the portal",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: "2025-08"
+}, {
+  id: "PAR-005",
+  project: "Partner Portal",
+  title: "Rename ambiguous menu labels",
+  impact: "low",
+  status: "adopted",
+  owner: "Alex Rivera",
+  done: "Labels tested and renamed",
+  evidence: "https://example.com/study-23",
+  jira: "",
+  task: "Find a section",
+  ai: "FALSE",
+  communicated: "2025-07",
+  fixed: "2025-09"
+}, {
+  id: "PAR-006",
+  project: "Partner Portal",
+  title: "Rebuild the reporting export flow",
+  impact: "high",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-24",
+  jira: "",
+  task: "Export a report",
+  ai: "TRUE",
+  communicated: "2025-10",
+  fixed: ""
+}, {
+  id: "PAR-007",
+  project: "Partner Portal",
+  title: "Add bulk user management",
+  impact: "high",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-25",
+  jira: "",
+  task: "Manage partner users",
+  ai: "FALSE",
+  communicated: "2025-11",
+  fixed: ""
+}, {
+  id: "PAR-008",
+  project: "Partner Portal",
+  title: "Add saved filters to the ticket list",
+  impact: "medium",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-26",
+  jira: "",
+  task: "Filter tickets",
+  ai: "FALSE",
+  communicated: "2025-12",
+  fixed: ""
+}, {
+  id: "PAR-009",
+  project: "Partner Portal",
+  title: "Introduce a partner API key manager",
+  impact: "high",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-27",
+  jira: "",
+  task: "Manage API keys",
+  ai: "TRUE",
+  communicated: "2026-01",
+  fixed: ""
+}, {
+  id: "PAR-010",
+  project: "Partner Portal",
+  title: "Add in-portal status notifications",
+  impact: "medium",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-28",
+  jira: "",
+  task: "Check request status",
+  ai: "FALSE",
+  communicated: "2026-02",
+  fixed: ""
+}, {
+  id: "PAR-011",
+  project: "Partner Portal",
+  title: "Redesign the partner home page",
+  impact: "high",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-29",
+  jira: "",
+  task: "Land on the portal",
+  ai: "FALSE",
+  communicated: "2026-03",
+  fixed: ""
+}, {
+  id: "PAR-012",
+  project: "Partner Portal",
+  title: "Add document version history",
+  impact: "medium",
+  status: "committed",
+  owner: "Alex Rivera",
+  done: "Version panel in the build",
+  evidence: "https://example.com/study-30",
+  jira: "TKT-2075",
+  task: "Review document history",
+  ai: "FALSE",
+  communicated: "2026-03",
+  fixed: "2026-05"
+}, {
+  id: "PAR-013",
+  project: "Partner Portal",
+  title: "Add single sign-on for partner organizations",
+  impact: "high",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-31",
+  jira: "",
+  task: "Sign in",
+  ai: "TRUE",
+  communicated: "2026-05",
+  fixed: ""
+}, {
+  id: "PAR-014",
+  project: "Partner Portal",
+  title: "Add a guided setup checklist",
+  impact: "medium",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "https://example.com/study-32",
+  jira: "",
+  task: "Complete account setup",
+  ai: "FALSE",
+  communicated: "2026-06",
+  fixed: ""
+}, {
+  id: "MOB-001",
+  project: "Mobile Banking",
+  title: "Add biometric sign-in",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Face and fingerprint sign-in available",
+  evidence: "https://example.com/study-33",
+  jira: "TKT-3009",
+  task: "Sign in",
+  ai: "TRUE",
+  communicated: "2025-04",
+  fixed: "2025-05"
+}, {
+  id: "MOB-002",
+  project: "Mobile Banking",
+  title: "Simplify the transfer flow",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Transfer completes in two steps",
+  evidence: "https://example.com/study-34",
+  jira: "",
+  task: "Send money",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-06"
+}, {
+  id: "MOB-003",
+  project: "Mobile Banking",
+  title: "Add real-time balance updates",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Balance updates without refresh",
+  evidence: "https://example.com/study-35",
+  jira: "TKT-3015",
+  task: "Check balance",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: "2025-07"
+}, {
+  id: "MOB-004",
+  project: "Mobile Banking",
+  title: "Add transaction search and filters",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Search by date and payee",
+  evidence: "https://example.com/study-36",
+  jira: "",
+  task: "Find a transaction",
+  ai: "FALSE",
+  communicated: "2025-07",
+  fixed: "2025-08"
+}, {
+  id: "MOB-005",
+  project: "Mobile Banking",
+  title: "Add card freeze and unfreeze",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Toggle available in the app",
+  evidence: "https://example.com/study-37",
+  jira: "TKT-3028",
+  task: "Freeze a card",
+  ai: "FALSE",
+  communicated: "2025-09",
+  fixed: "2025-10"
+}, {
+  id: "MOB-006",
+  project: "Mobile Banking",
+  title: "Add spending category insights",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Categories shown on the dashboard",
+  evidence: "https://example.com/study-38",
+  jira: "",
+  task: "Review spending",
+  ai: "TRUE",
+  communicated: "2025-11",
+  fixed: "2025-12"
+}, {
+  id: "MOB-007",
+  project: "Mobile Banking",
+  title: "Enable mobile check deposit",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Deposit by photo is live",
+  evidence: "https://example.com/study-39",
+  jira: "TKT-3040",
+  task: "Deposit a check",
+  ai: "FALSE",
+  communicated: "2026-01",
+  fixed: "2026-02"
+}, {
+  id: "MOB-008",
+  project: "Mobile Banking",
+  title: "Add push alerts for large transactions",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Alerts are configurable",
+  evidence: "https://example.com/study-40",
+  jira: "",
+  task: "Set an alert",
+  ai: "FALSE",
+  communicated: "2026-02",
+  fixed: "2026-03"
+}, {
+  id: "MOB-009",
+  project: "Mobile Banking",
+  title: "Add scheduled and recurring payments",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Recurring payments available",
+  evidence: "https://example.com/study-41",
+  jira: "TKT-3055",
+  task: "Schedule a payment",
+  ai: "FALSE",
+  communicated: "2026-03",
+  fixed: "2026-04"
+}, {
+  id: "MOB-010",
+  project: "Mobile Banking",
+  title: "Add a quick-balance home widget",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Widget on the home screen",
+  evidence: "https://example.com/study-42",
+  jira: "",
+  task: "Check balance",
+  ai: "TRUE",
+  communicated: "2026-04",
+  fixed: "2026-05"
+}, {
+  id: "MOB-011",
+  project: "Mobile Banking",
+  title: "Add in-app dispute filing",
+  impact: "high",
+  status: "committed",
+  owner: "Sam Patel",
+  done: "Dispute flow in staging",
+  evidence: "https://example.com/study-43",
+  jira: "TKT-3071",
+  task: "Dispute a charge",
+  ai: "FALSE",
+  communicated: "2026-05",
+  fixed: "2026-06"
+}, {
+  id: "MOB-012",
+  project: "Mobile Banking",
+  title: "Add payee nicknames",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Nicknames are editable",
+  evidence: "https://example.com/study-44",
+  jira: "",
+  task: "Manage payees",
+  ai: "FALSE",
+  communicated: "2026-05",
+  fixed: "2026-06"
+}, {
+  id: "MOB-013",
+  project: "Mobile Banking",
+  title: "Add a dark mode",
+  impact: "low",
+  status: "communicated",
+  owner: "Sam Patel",
+  done: "",
+  evidence: "https://example.com/study-45",
+  jira: "",
+  task: "Adjust appearance",
+  ai: "FALSE",
+  communicated: "2026-06",
+  fixed: ""
+}, {
+  id: "MOB-014",
+  project: "Mobile Banking",
+  title: "Add joint account switching",
+  impact: "high",
+  status: "communicated",
+  owner: "Sam Patel",
+  done: "",
+  evidence: "https://example.com/study-46",
+  jira: "",
+  task: "Switch between accounts",
+  ai: "TRUE",
+  communicated: "2026-07",
+  fixed: ""
+}, {
+  id: "EMP-001",
+  project: "Employee Dashboard",
+  title: "Add a personalized task list",
+  impact: "medium",
+  status: "adopted",
+  owner: "Morgan Chen",
+  done: "Tasks load per signed-in user",
+  evidence: "https://example.com/study-47",
+  jira: "TKT-4007",
+  task: "See my tasks",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-08"
+}, {
+  id: "EMP-002",
+  project: "Employee Dashboard",
+  title: "Rebuild the shift scheduling view",
+  impact: "high",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-48",
+  jira: "",
+  task: "View the schedule",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: ""
+}, {
+  id: "EMP-003",
+  project: "Employee Dashboard",
+  title: "Add saved report filters",
+  impact: "medium",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-49",
+  jira: "",
+  task: "Filter reports",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: ""
+}, {
+  id: "EMP-004",
+  project: "Employee Dashboard",
+  title: "Consolidate three overlapping dashboards",
+  impact: "high",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-50",
+  jira: "",
+  task: "Open the dashboard",
+  ai: "TRUE",
+  communicated: "2025-08",
+  fixed: ""
+}, {
+  id: "EMP-005",
+  project: "Employee Dashboard",
+  title: "Fix inconsistent date formats",
+  impact: "low",
+  status: "adopted",
+  owner: "Morgan Chen",
+  done: "Dates standardized across views",
+  evidence: "https://example.com/study-51",
+  jira: "",
+  task: "Read a report",
+  ai: "FALSE",
+  communicated: "2025-09",
+  fixed: "2025-11"
+}, {
+  id: "EMP-006",
+  project: "Employee Dashboard",
+  title: "Add an approvals queue",
+  impact: "medium",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-52",
+  jira: "",
+  task: "Approve a request",
+  ai: "FALSE",
+  communicated: "2025-10",
+  fixed: ""
+}, {
+  id: "EMP-007",
+  project: "Employee Dashboard",
+  title: "Add role-based access controls",
+  impact: "high",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-53",
+  jira: "",
+  task: "Access a restricted section",
+  ai: "FALSE",
+  communicated: "2026-01",
+  fixed: ""
+}, {
+  id: "EMP-008",
+  project: "Employee Dashboard",
+  title: "Add export to spreadsheet",
+  impact: "medium",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-54",
+  jira: "",
+  task: "Export data",
+  ai: "TRUE",
+  communicated: "2026-02",
+  fixed: ""
+}, {
+  id: "EMP-009",
+  project: "Employee Dashboard",
+  title: "Add tooltips to metric cards",
+  impact: "low",
+  status: "committed",
+  owner: "Morgan Chen",
+  done: "Tooltips in the build",
+  evidence: "https://example.com/study-55",
+  jira: "",
+  task: "Understand a metric",
+  ai: "FALSE",
+  communicated: "2026-03",
+  fixed: "2026-04"
+}, {
+  id: "EMP-010",
+  project: "Employee Dashboard",
+  title: "Redesign the navigation sidebar",
+  impact: "high",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-56",
+  jira: "",
+  task: "Navigate the tool",
+  ai: "FALSE",
+  communicated: "2026-04",
+  fixed: ""
+}, {
+  id: "EMP-011",
+  project: "Employee Dashboard",
+  title: "Add a global record search",
+  impact: "medium",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "https://example.com/study-57",
+  jira: "",
+  task: "Find a record",
+  ai: "TRUE",
+  communicated: "2026-06",
+  fixed: ""
+}, {
+  id: "LEG-001",
+  project: "Legacy Reports",
+  title: "Migrate the top reports to the new suite",
+  impact: "medium",
+  status: "adopted",
+  owner: "Priya Nair",
+  done: "Top ten reports migrated",
+  evidence: "https://example.com/study-58",
+  jira: "TKT-5003",
+  task: "Run a report",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-05"
+}, {
+  id: "LEG-002",
+  project: "Legacy Reports",
+  title: "Add a deprecation banner with a timeline",
+  impact: "high",
+  status: "adopted",
+  owner: "Priya Nair",
+  done: "Banner live with sunset dates",
+  evidence: "https://example.com/study-59",
+  jira: "",
+  task: "Understand the sunset plan",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-06"
+}, {
+  id: "LEG-003",
+  project: "Legacy Reports",
+  title: "Preserve saved report definitions on export",
+  impact: "medium",
+  status: "communicated",
+  owner: "Priya Nair",
+  done: "",
+  evidence: "https://example.com/study-60",
+  jira: "",
+  task: "Export a report",
+  ai: "FALSE",
+  communicated: "2025-07",
+  fixed: ""
+}, {
+  id: "LEG-004",
+  project: "Legacy Reports",
+  title: "Rebuild the legacy chart engine",
+  impact: "low",
+  status: "canceled",
+  owner: "Priya Nair",
+  done: "",
+  evidence: "https://example.com/study-61",
+  jira: "",
+  task: "View a chart",
+  ai: "FALSE",
+  communicated: "2025-08",
+  fixed: ""
+}, {
+  id: "LEG-005",
+  project: "Legacy Reports",
+  title: "Add a redirect to the new reporting home",
+  impact: "high",
+  status: "communicated",
+  owner: "Priya Nair",
+  done: "",
+  evidence: "https://example.com/study-62",
+  jira: "",
+  task: "Find reports",
+  ai: "TRUE",
+  communicated: "2025-09",
+  fixed: ""
+}, {
+  id: "LEG-006",
+  project: "Legacy Reports",
+  title: "Add scheduling to legacy reports",
+  impact: "medium",
+  status: "canceled",
+  owner: "Priya Nair",
+  done: "",
+  evidence: "https://example.com/study-63",
+  jira: "",
+  task: "Schedule a report",
+  ai: "FALSE",
+  communicated: "2025-10",
+  fixed: ""
+}, {
+  id: "LEG-007",
+  project: "Legacy Reports",
+  title: "Document the export format for archival",
+  impact: "low",
+  status: "communicated",
+  owner: "Priya Nair",
+  done: "",
+  evidence: "https://example.com/study-64",
+  jira: "",
+  task: "Export data",
+  ai: "FALSE",
+  communicated: "2025-11",
+  fixed: ""
+}];
 function generateExampleData() {
   const s = emptyState();
-  const months = [];
-  for (let y = 2025; y <= 2026; y++) for (let m = 1; m <= 12; m++) {
-    const ym = `${y}-${String(m).padStart(2, "0")}`;
-    if (ym <= "2026-07") months.push(ym);
-  }
-  s.settings.asOf = months[months.length - 1];
-  const projects = [{
-    name: "Platform Alpha",
-    active: true,
-    ras: [18, 22, 28, 35, 42, 48, 52, 55, 58, 61, 64, 67, 70, 72, 74, 76, 78, 79, 80],
-    recs: [{
-      title: "Simplify the onboarding flow to reduce drop-off",
-      impact: "high",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }, {
-      title: "Add contextual help tooltips on key screens",
-      impact: "medium",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }, {
-      title: "Provide a progress indicator during setup",
-      impact: "medium",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }, {
-      title: "Reduce the number of required fields in registration",
-      impact: "high",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }, {
-      title: "Add single sign-on support",
-      impact: "high",
-      status: "committed",
-      owner: "Jordan Lee"
-    }, {
-      title: "Improve error messages with actionable guidance",
-      impact: "medium",
-      status: "committed",
-      owner: "Morgan Chen"
-    }, {
-      title: "Redesign the settings page for clarity",
-      impact: "low",
-      status: "communicated",
-      owner: "Morgan Chen"
-    }, {
-      title: "Add keyboard shortcuts for power users",
-      impact: "low",
-      status: "communicated",
-      owner: "Morgan Chen"
-    }]
-  }, {
-    name: "Customer Portal",
-    active: true,
-    ras: [10, 12, 15, 18, 22, 25, 28, 30, 32, 34, 36, 38, 40, 42, 44, 45, 46, 47, 48],
-    recs: [{
-      title: "Consolidate the three support entry points into one",
-      impact: "high",
-      status: "adopted",
-      owner: "Alex Rivera"
-    }, {
-      title: "Add search to the knowledge base",
-      impact: "high",
-      status: "committed",
-      owner: "Alex Rivera"
-    }, {
-      title: "Show ticket status on the dashboard",
-      impact: "medium",
-      status: "committed",
-      owner: "Alex Rivera"
-    }, {
-      title: "Enable self-service password reset",
-      impact: "medium",
-      status: "communicated",
-      owner: "Alex Rivera"
-    }, {
-      title: "Add live chat escalation path",
-      impact: "high",
-      status: "communicated",
-      owner: "Sam Patel"
-    }, {
-      title: "Improve mobile responsiveness of the portal",
-      impact: "medium",
-      status: "communicated",
-      owner: "Sam Patel"
-    }, {
-      title: "Add satisfaction survey after case resolution",
-      impact: "low",
-      status: "communicated",
-      owner: "Sam Patel"
-    }]
-  }, {
-    name: "Internal Tools",
-    active: true,
-    ras: [45, 48, 50, 52, 55, 58, 60, 62, 58, 55, 52, 50, 48, 46, 44, 42, 40, 38, 36],
-    recs: [{
-      title: "Migrate legacy forms to the new design system",
-      impact: "high",
-      status: "adopted",
-      owner: "Morgan Chen"
-    }, {
-      title: "Add bulk edit capabilities to the admin panel",
-      impact: "medium",
-      status: "adopted",
-      owner: "Morgan Chen"
-    }, {
-      title: "Improve page load times on the dashboard",
-      impact: "high",
-      status: "communicated",
-      owner: "Sam Patel"
-    }, {
-      title: "Add role-based access controls",
-      impact: "high",
-      status: "communicated",
-      owner: "Sam Patel"
-    }, {
-      title: "Create a unified notification center",
-      impact: "medium",
-      status: "communicated",
-      owner: "Sam Patel"
-    }, {
-      title: "Standardize date formats across tools",
-      impact: "low",
-      status: "communicated",
-      owner: "Jordan Lee"
-    }]
-  }, {
-    name: "Mobile App",
-    active: true,
-    ras: [0, 0, 5, 8, 12, 15, 18, 20, 22, 24, 26, 28, 30, 32, 34, 35, 36, 37, 38],
-    recs: [{
-      title: "Support biometric authentication",
-      impact: "high",
-      status: "adopted",
-      owner: "Sam Patel"
-    }, {
-      title: "Add offline mode for field workers",
-      impact: "high",
-      status: "committed",
-      owner: "Sam Patel"
-    }, {
-      title: "Reduce app startup time below 3 seconds",
-      impact: "medium",
-      status: "committed",
-      owner: "Jordan Lee"
-    }, {
-      title: "Add push notification preferences",
-      impact: "medium",
-      status: "communicated",
-      owner: "Jordan Lee"
-    }, {
-      title: "Support dark mode",
-      impact: "low",
-      status: "communicated",
-      owner: "Alex Rivera"
-    }, {
-      title: "Improve accessibility for screen readers",
-      impact: "high",
-      status: "communicated",
-      owner: "Alex Rivera"
-    }]
-  }, {
-    name: "Analytics Dashboard",
-    active: false,
-    ras: [30, 35, 40, 45, 50, 55, 60, 65, 70, 72, 74, 76, 78, 80, 82, 84, 86, 88, 90],
-    recs: [{
-      title: "Add export to CSV for all reports",
-      impact: "medium",
-      status: "adopted",
-      owner: "Morgan Chen"
-    }, {
-      title: "Add date range picker to all views",
-      impact: "medium",
-      status: "adopted",
-      owner: "Morgan Chen"
-    }, {
-      title: "Support custom dashboard layouts",
-      impact: "high",
-      status: "adopted",
-      owner: "Morgan Chen"
-    }, {
-      title: "Add drill-down from summary to detail",
-      impact: "high",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }, {
-      title: "Implement real-time data refresh",
-      impact: "medium",
-      status: "adopted",
-      owner: "Jordan Lee"
-    }]
-  }];
-  const startIdx = months.length - 19; // align RAS history to last 19 months
-  for (const p of projects) {
+  s.settings.asOf = ymNow();
+  const idByName = {};
+  for (const p of EXAMPLE_PROJECTS) {
     const id = uid();
+    idByName[p.name] = id;
     s.projects.push({
       id,
       name: p.name,
-      owner: "",
-      active: p.active,
-      createdAt: months[Math.max(0, startIdx)],
+      owner: p.owner,
+      active: p.status !== "Archived",
+      createdAt: ymNow(),
       source: "example"
     });
     s.history[id] = {
       ras: {},
       created: {}
     };
-    p.ras.forEach((v, i) => {
-      const mi = startIdx + i;
-      if (mi >= 0 && mi < months.length) s.history[id].ras[months[mi]] = v;
-    });
-    // Distribute created-by-month counts
-    const recMonths = months.slice(Math.max(0, startIdx), Math.max(0, startIdx) + p.ras.length);
-    const perMonth = Math.ceil(p.recs.length / Math.max(1, recMonths.length));
-    let ri = 0;
-    for (const rm of recMonths) {
-      for (let k = 0; k < perMonth && ri < p.recs.length; k++, ri++) {
-        s.history[id].created[rm] = (s.history[id].created[rm] || 0) + 1;
-      }
-    }
-    // Add recs
-    for (const tr of p.recs) {
-      const r = emptyRec(id);
-      r.title = tr.title;
-      r.impact = tr.impact;
-      r.status = tr.status;
-      r.owner = tr.owner;
-      r.createdMonth = months[Math.max(0, startIdx)];
-      r.statusMonth = r.createdMonth;
-      s.recs.push(r);
-    }
+  }
+  for (const r of EXAMPLE_RECS) {
+    const id = idByName[r.project];
+    if (!id) continue;
+    const rec = emptyRec(id);
+    rec.trackerId = r.id;
+    rec.title = r.title;
+    rec.impact = r.impact;
+    rec.status = r.status;
+    rec.owner = r.owner;
+    rec.doneDefinition = r.done;
+    rec.evidence = r.evidence;
+    rec.jira = r.jira;
+    rec.impactedTask = r.task;
+    rec.isAI = r.ai === "TRUE";
+    rec.createdMonth = r.communicated;
+    rec.statusMonth = r.fixed || r.communicated;
+    s.recs.push(rec);
+  }
+  // Derive each project's trend and velocity history from its recommendation
+  // dates, exactly the way a spreadsheet import does.
+  for (const id of Object.values(idByName)) {
+    const own = s.recs.filter(r => r.projectId === id);
+    s.history[id] = {
+      ras: rebuildRasSeriesFromRecs(own),
+      created: createdByMonth(id, s.recs, {})
+    };
   }
   return s;
 }
@@ -2652,18 +3412,18 @@ async function exportXLSX(state, projectData) {
   const recsRows = state.recs.map(r => {
     const proj = state.projects.find(p => p.id === r.projectId);
     return {
-      "Project": proj?.name || "",
-      "ID": r.trackerId || r.id,
-      "Recommendation": r.title,
-      "Impact": IMPACT_LABEL[r.impact] || r.impact,
-      "Status": STATUS_LABEL[r.status] || r.status,
-      "Owner": r.owner,
+      Project: proj?.name || "",
+      ID: r.trackerId || r.id,
+      Recommendation: r.title,
+      Impact: IMPACT_LABEL[r.impact] || r.impact,
+      Status: STATUS_LABEL[r.status] || r.status,
+      Owner: r.owner,
       "Definition of Done": r.doneDefinition,
-      "Evidence": r.evidence,
-      "Jira": r.jira,
+      Evidence: r.evidence,
+      Jira: r.jira,
       "Impacted Task": r.impactedTask,
       "AI Recommendation": r.isAI ? "Yes" : "No",
-      "Created": r.createdMonth,
+      Created: r.createdMonth,
       "Status Updated": r.statusMonth
     };
   });
@@ -2699,15 +3459,15 @@ async function exportXLSX(state, projectData) {
 
   // Tab 2: Project RAS
   const projRows = projectData.map(p => ({
-    "Project": p.name,
-    "Active": p.active ? "Active" : "Inactive",
-    "RAS": p.currentRas ?? "",
-    "Grade": p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
+    Project: p.name,
+    Active: p.active ? "Active" : "Inactive",
+    RAS: p.currentRas ?? "",
+    Grade: p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
     "Total Recs": p.live.agg.total,
-    "Adopted": p.live.agg.highAdopted + p.live.agg.medAdopted + p.live.agg.lowAdopted,
-    "Committed": p.live.agg.committed,
-    "Communicated": p.live.agg.communicated,
-    "Canceled": p.live.agg.canceled,
+    Adopted: p.live.agg.highAdopted + p.live.agg.medAdopted + p.live.agg.lowAdopted,
+    Committed: p.live.agg.committed,
+    Communicated: p.live.agg.communicated,
+    Canceled: p.live.agg.canceled,
     "High Adopted": p.live.agg.highAdopted,
     "High Total": p.live.agg.highTotal,
     "Med Adopted": p.live.agg.medAdopted,
@@ -2756,9 +3516,9 @@ async function exportXLSX(state, projectData) {
 
   // Tab 3: Investment Signals
   const sigRows = projectData.filter(p => p.active).map(p => ({
-    "Project": p.name,
-    "RAS": p.currentRas ?? "",
-    "Grade": p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
+    Project: p.name,
+    RAS: p.currentRas ?? "",
+    Grade: p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
     "Velocity (recs/mo)": p.signals.velocity,
     "Velocity Signal": p.signals.velSig || "",
     "6M Trend Direction": p.signals.trend.direction,
@@ -2951,7 +3711,7 @@ function OnboardingWizard({
     position: "relative",
     overflow: "hidden"
   };
-  const rule = React.createElement("div", {
+  const rule = /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: 0,
@@ -2961,7 +3721,7 @@ function OnboardingWizard({
       background: "linear-gradient(90deg, " + T.accent + ", " + T.accentInk + ")"
     }
   });
-  const wrap = children => React.createElement("div", {
+  const wrap = children => /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       inset: 0,
@@ -2973,11 +3733,11 @@ function OnboardingWizard({
       justifyContent: "center",
       padding: 20
     }
-  }, React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     style: card
   }, rule, children));
   if (step === 0) {
-    return wrap(React.createElement(React.Fragment, null, React.createElement("h2", {
+    return wrap(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
       style: {
         fontSize: 23,
         fontWeight: 700,
@@ -2985,14 +3745,14 @@ function OnboardingWizard({
         margin: "4px 0 10px",
         letterSpacing: -0.3
       }
-    }, "Welcome to Ledger"), React.createElement("p", {
+    }, "Welcome to Ledger"), /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 14,
         color: T.textSecondary,
         lineHeight: 1.65,
         margin: "0 0 8px"
       }
-    }, "Ledger tracks what happens to your research recommendations after you deliver them. It scores each product\u2019s Recommendation Adoption Score and reads an investment signal from adoption velocity and the RAS trend."), React.createElement("p", {
+    }, "Ledger tracks what happens to your research recommendations after you deliver them. It scores each product\u2019s Recommendation Adoption Score and reads an investment signal from adoption velocity and the RAS trend."), /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 12.5,
         color: T.textMuted,
@@ -3000,20 +3760,20 @@ function OnboardingWizard({
         margin: "0 0 18px",
         fontStyle: "italic"
       }
-    }, "Every number is computed locally in your browser. AI writes only the optional prose summaries."), React.createElement("p", {
+    }, "Every number is computed locally in your browser. AI writes only the optional prose summaries."), /*#__PURE__*/React.createElement("p", {
       style: {
         fontSize: 14,
         fontWeight: 600,
         color: T.textBright,
         margin: "0 0 12px"
       }
-    }, "First, choose how you\u2019ll manage your recommendations:"), React.createElement("div", {
+    }, "First, choose how you\u2019ll manage your recommendations:"), /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "center"
       }
-    }, React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("button", {
       onClick: onSkip,
       style: {
         fontFamily: T.font,
@@ -3025,7 +3785,7 @@ function OnboardingWizard({
         border: "none",
         padding: "6px 0"
       }
-    }, "Skip for now"), React.createElement("button", {
+    }, "Skip for now"), /*#__PURE__*/React.createElement("button", {
       onClick: () => setStep(1),
       style: {
         fontFamily: T.font,
@@ -3047,7 +3807,7 @@ function OnboardingWizard({
     primary,
     onClick,
     cta
-  }) => React.createElement("div", {
+  }) => /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       minWidth: 250,
@@ -3058,21 +3818,21 @@ function OnboardingWizard({
       display: "flex",
       flexDirection: "column"
     }
-  }, React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 15,
       fontWeight: 700,
       color: T.textBright,
       marginBottom: 8
     }
-  }, title), React.createElement("div", {
+  }, title), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12.5,
       color: T.textSecondary,
       lineHeight: 1.55,
       marginBottom: 10
     }
-  }, body), React.createElement("ul", {
+  }, body), /*#__PURE__*/React.createElement("ul", {
     style: {
       margin: "0 0 14px",
       paddingLeft: 18,
@@ -3080,10 +3840,10 @@ function OnboardingWizard({
       color: T.textMuted,
       lineHeight: 1.7
     }
-  }, points.map((pt, i) => React.createElement("li", {
+  }, points.map((pt, i) => /*#__PURE__*/React.createElement("li", {
     key: i
-  }, pt))), React.createElement("button", {
-    onClick,
+  }, pt))), /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
     style: {
       marginTop: "auto",
       fontFamily: T.font,
@@ -3097,20 +3857,20 @@ function OnboardingWizard({
       color: primary ? "#fff" : T.accent
     }
   }, cta));
-  return wrap(React.createElement(React.Fragment, null, React.createElement("h2", {
+  return wrap(/*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h2", {
     style: {
       fontSize: 20,
       fontWeight: 700,
       color: T.textBright,
       margin: "4px 0 4px"
     }
-  }, "Two ways to use Ledger"), React.createElement("p", {
+  }, "Two ways to use Ledger"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12.5,
       color: T.textMuted,
       margin: "0 0 16px"
     }
-  }, "You can switch later in Settings."), React.createElement("div", {
+  }, "You can switch later in Settings."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 14,
@@ -3129,7 +3889,7 @@ function OnboardingWizard({
     points: ["Import your tracker to see the scores and signals", "No editing in the app \u2014 recommendations are view-only", "Each import replaces the data from your spreadsheet"],
     cta: "Use a spreadsheet",
     onClick: onSpreadsheet
-  })), React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "flex-start",
@@ -3140,25 +3900,25 @@ function OnboardingWizard({
       border: "1px solid " + T.border,
       borderRadius: 10
     }
-  }, React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
       flex: "0 0 auto"
     }
-  }, "\uD83D\uDD12"), React.createElement("span", {
+  }, "\uD83D\uDD12"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       color: T.textSecondary,
       lineHeight: 1.5
     }
-  }, "Either way, your data stays on this device. Ledger runs entirely in your browser and saves only to this browser\u2019s local storage. Nothing is uploaded, and no one \u2014 including whoever shared this app \u2014 can see your recommendations.")), React.createElement("div", {
+  }, "Either way, your data stays on this device. Ledger runs entirely in your browser and saves only to this browser\u2019s local storage. Nothing is uploaded, and no one \u2014 including whoever shared this app \u2014 can see your recommendations.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
       marginTop: 14
     }
-  }, React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setStep(0),
     style: {
       fontFamily: T.font,
@@ -3169,7 +3929,7 @@ function OnboardingWizard({
       background: "transparent",
       border: "none"
     }
-  }, "\u2190 Back"), React.createElement("button", {
+  }, "\u2190 Back"), /*#__PURE__*/React.createElement("button", {
     onClick: onManagedExample,
     style: {
       fontFamily: T.font,
@@ -3197,7 +3957,7 @@ function TemplateGuide({
       const wb = XLSX.utils.book_new();
 
       // — Projects sheet: Status column drives Active vs Archived —
-      const projects = [["Project", "Status", "Team / Owner", "Notes"], ["Platform Alpha", "Active", "Jordan Lee", "Replace these rows with your own products."], ["Customer Portal", "Active", "Alex Rivera", ""], ["Mobile App", "Active", "Sam Patel", ""], ["Legacy Dashboard", "Archived", "Morgan Chen", "Set Status to Archived to retire a product without deleting its history."]];
+      const projects = [["Project", "Status", "Team / Owner", "Notes"], ...EXAMPLE_PROJECTS.map(p => [p.name, p.status, p.owner, p.notes])];
       const wsP = XLSX.utils.aoa_to_sheet(projects);
       wsP["!cols"] = [{
         wch: 26
@@ -3223,7 +3983,7 @@ function TemplateGuide({
       XLSX.utils.book_append_sheet(wb, wsP, "Projects");
 
       // — Recommendations sheet —
-      const recs = [["Recommendation ID", "Project", "Recommendation", "Impact", "Status", "Owner", "Done Definition", "Evidence", "Jira", "Impacted Task", "AI Recommendation", "Date Communicated", "Date Fixed"], ["REC001", "Platform Alpha", "Simplify the onboarding flow to reduce drop-off", "high", "adopted", "Jordan Lee", "Drop-off falls below 15%", "https://example.com/study-1", "TICKET-123", "Complete first-run setup", "FALSE", "2026-01", "2026-03"], ["REC002", "Platform Alpha", "Add contextual help on key screens", "medium", "committed", "Jordan Lee", "Help content shipped on the top 5 screens", "https://example.com/study-1", "", "Complete first-run setup", "FALSE", "2026-02", ""], ["REC003", "Customer Portal", "Add search to the knowledge base", "high", "communicated", "Alex Rivera", "Users can search articles from the portal home", "https://example.com/study-2", "", "Find an answer without a ticket", "FALSE", "2026-03", ""], ["REC004", "Mobile App", "Support biometric authentication", "medium", "adopted", "Sam Patel", "Face and fingerprint sign-in available", "https://example.com/study-3", "", "Sign in", "TRUE", "2026-01", "2026-04"], ["REC005", "Legacy Dashboard", "Retire the unused export tool", "low", "canceled", "Morgan Chen", "Superseded by the new reporting suite", "", "", "Export a report", "FALSE", "2025-11", ""]];
+      const recs = [["Recommendation ID", "Project", "Recommendation", "Impact", "Status", "Owner", "Done Definition", "Evidence", "Jira", "Impacted Task", "AI Recommendation", "Date Communicated", "Date Fixed"], ...EXAMPLE_RECS.map(r => [r.id, r.project, r.title, r.impact, r.status, r.owner, r.done, r.evidence, r.jira, r.task, r.ai, r.communicated, r.fixed])];
       const wsR = XLSX.utils.aoa_to_sheet(recs);
       wsR["!cols"] = [{
         wch: 18
@@ -3275,13 +4035,13 @@ function TemplateGuide({
         wch: 100
       }];
       XLSX.utils.book_append_sheet(wb, wsH, "How to use");
-      XLSX.writeFile(wb, "ledger_template.xlsx");
+      XLSX.writeFile(wb, "ledger_sample_data.xlsx");
     } catch (e) {
       alert("Could not build the template: " + e.message);
     }
     setTplBusy(false);
   };
-  return React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", {
     onClick: onClose,
     style: {
       position: "fixed",
@@ -3294,7 +4054,7 @@ function TemplateGuide({
       justifyContent: "center",
       padding: 20
     }
-  }, React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     onClick: e => e.stopPropagation(),
     style: {
       background: T.bgCard,
@@ -3308,7 +4068,7 @@ function TemplateGuide({
       maxHeight: "85vh",
       overflowY: "auto"
     }
-  }, React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: 0,
@@ -3318,14 +4078,14 @@ function TemplateGuide({
       background: `linear-gradient(90deg, ${T.accent}, ${T.accentInk})`,
       borderRadius: "16px 16px 0 0"
     }
-  }), React.createElement("h2", {
+  }), /*#__PURE__*/React.createElement("h2", {
     style: {
       fontSize: 20,
       fontWeight: 700,
       color: T.textBright,
       margin: "4px 0 14px"
     }
-  }, "Spreadsheet import guide"), React.createElement("div", {
+  }, "Spreadsheet import guide"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -3336,88 +4096,88 @@ function TemplateGuide({
       borderRadius: 10,
       marginBottom: 14
     }
-  }, React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
       flex: "0 0 auto"
     }
-  }, "\uD83D\uDD12"), React.createElement("span", {
+  }, "\uD83D\uDD12"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12.5,
       color: T.textSecondary,
       lineHeight: 1.55
     }
-  }, "Your file is read in your browser and never uploaded. Parsing happens on your device, and the result is saved only to this browser\u2019s local storage. You can verify this: open your browser\u2019s developer tools, watch the Network tab while you import, and you\u2019ll see no upload.")), React.createElement("h3", {
+  }, "Your file is read in your browser and never uploaded. Parsing happens on your device, and the result is saved only to this browser\u2019s local storage. You can verify this: open your browser\u2019s developer tools, watch the Network tab while you import, and you\u2019ll see no upload.")), /*#__PURE__*/React.createElement("h3", {
     style: {
       fontSize: 14,
       fontWeight: 700,
       color: T.textBright,
       margin: "16px 0 6px"
     }
-  }, "Importing from a spreadsheet (recommended)"), React.createElement("p", {
+  }, "Importing from a spreadsheet (recommended)"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: T.textSecondary,
       lineHeight: 1.6,
       margin: "0 0 8px"
     }
-  }, "Download the xlsx template below and fill it in. It has a Projects sheet, a Recommendations sheet, and a How-to-use sheet. On the Projects sheet, set Status to Active or Archived for each product — archived products keep their history but stay out of the portfolio score. On the Recommendations sheet, use one row per recommendation with Project, Recommendation, Impact (high/medium/low), Status (adopted/committed/communicated/canceled), Owner, and Date Communicated (YYYY-MM — required for velocity). Rows are matched by Recommendation ID, so re-importing updates instead of duplicating."), React.createElement("p", {
+  }, "Download the xlsx template below and fill it in. It has a Projects sheet, a Recommendations sheet, and a How-to-use sheet. On the Projects sheet, set Status to Active or Archived for each product — archived products keep their history but stay out of the portfolio score. On the Recommendations sheet, use one row per recommendation with Project, Recommendation, Impact (high/medium/low), Status (adopted/committed/communicated/canceled), Owner, and Date Communicated (YYYY-MM — required for velocity). Rows are matched by Recommendation ID, so re-importing updates instead of duplicating."), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: T.textSecondary,
       lineHeight: 1.6,
       margin: "0 0 8px"
     }
-  }, "Status must be one of: adopted, committed, communicated, canceled, deferred, rejected. Impact must be: high, medium, or low."), React.createElement("h3", {
+  }, "Status must be one of: adopted, committed, communicated, canceled, deferred, rejected. Impact must be: high, medium, or low."), /*#__PURE__*/React.createElement("h3", {
     style: {
       fontSize: 14,
       fontWeight: 700,
       color: T.textBright,
       margin: "20px 0 6px"
     }
-  }, "Building your own spreadsheet"), React.createElement("p", {
+  }, "Building your own spreadsheet"), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
       color: T.textSecondary,
       lineHeight: 1.6,
       margin: "0 0 10px"
     }
-  }, "You don\u2019t have to use the template. Any .xlsx or .csv with the right column headers will work. The header row must be row 1. Column order doesn\u2019t matter. Here\u2019s what Ledger looks for:"), React.createElement("table", {
+  }, "You don\u2019t have to use the template. Any .xlsx or .csv with the right column headers will work. The header row must be row 1. Column order doesn\u2019t matter. Here\u2019s what Ledger looks for:"), /*#__PURE__*/React.createElement("table", {
     style: {
       width: "100%",
       borderCollapse: "collapse",
       fontSize: 12.5,
       marginBottom: 10
     }
-  }, React.createElement("thead", null, React.createElement("tr", {
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", {
     style: {
       borderBottom: `2px solid ${T.border}`,
       textAlign: "left"
     }
-  }, React.createElement("th", {
+  }, /*#__PURE__*/React.createElement("th", {
     style: {
       padding: "6px 8px",
       color: T.textBright,
       fontWeight: 700
     }
-  }, "Column header"), React.createElement("th", {
+  }, "Column header"), /*#__PURE__*/React.createElement("th", {
     style: {
       padding: "6px 8px",
       color: T.textBright,
       fontWeight: 700
     }
-  }, "Required?"), React.createElement("th", {
+  }, "Required?"), /*#__PURE__*/React.createElement("th", {
     style: {
       padding: "6px 8px",
       color: T.textBright,
       fontWeight: 700
     }
-  }, "Notes"))), React.createElement("tbody", null, [["Project", "Yes", "Exact word. The product or workstream name."], ["Recommendation", "Yes", "The column must contain the word \u201cRecommendation.\u201d"], ["Status", "No", "adopted, committed, communicated, canceled, deferred, or rejected. Defaults to communicated if missing."], ["Impact", "No", "high, medium, or low. \u201cPriority\u201d also works. Defaults to medium."], ["Owner", "No", "The person accountable. \u201cResearcher\u201d also works."], ["Recommendation ID", "No", "Any unique text. Needed for re-imports to update instead of duplicate. \u201cID\u201d also works."], ["Date Communicated", "No*", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. *Required for velocity to calculate correctly."], ["Date Fixed", "No", "YYYY-MM or M/D/YYYY. When the recommendation was adopted."], ["Done Definition", "No", "What \u201cdone\u201d looks like. \u201cDescription\u201d or \u201cComment\u201d also work."], ["Evidence", "No", "A link to the study."], ["Jira", "No", "A ticket reference."], ["Impacted Task", "No", "The user task this recommendation affects."], ["AI Recommendation", "No", "TRUE or FALSE. Lets Ledger compare AI vs non-AI adoption."]].map((r, i) => React.createElement("tr", {
+  }, "Notes"))), /*#__PURE__*/React.createElement("tbody", null, [["Project", "Yes", "Exact word. The product or workstream name."], ["Recommendation", "Yes", "The column must contain the word \u201cRecommendation.\u201d"], ["Status", "No", "adopted, committed, communicated, canceled, deferred, or rejected. Defaults to communicated if missing."], ["Impact", "No", "high, medium, or low. \u201cPriority\u201d also works. Defaults to medium."], ["Owner", "No", "The person accountable. \u201cResearcher\u201d also works."], ["Recommendation ID", "No", "Any unique text. Needed for re-imports to update instead of duplicate. \u201cID\u201d also works."], ["Date Communicated", "No*", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. *Required for velocity to calculate correctly."], ["Date Fixed", "No", "YYYY-MM or M/D/YYYY. When the recommendation was adopted."], ["Done Definition", "No", "What \u201cdone\u201d looks like. \u201cDescription\u201d or \u201cComment\u201d also work."], ["Evidence", "No", "A link to the study."], ["Jira", "No", "A ticket reference."], ["Impacted Task", "No", "The user task this recommendation affects."], ["AI Recommendation", "No", "TRUE or FALSE. Lets Ledger compare AI vs non-AI adoption."]].map((r, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
     style: {
       borderBottom: `1px solid ${T.border}`
     }
-  }, React.createElement("td", {
+  }, /*#__PURE__*/React.createElement("td", {
     style: {
       padding: "6px 8px",
       color: T.textBright,
@@ -3426,33 +4186,33 @@ function TemplateGuide({
       fontSize: 11.5,
       whiteSpace: "nowrap"
     }
-  }, r[0]), React.createElement("td", {
+  }, r[0]), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: "6px 8px",
       color: r[1] === "Yes" ? T.accent : T.textMuted,
       fontWeight: 600
     }
-  }, r[1]), React.createElement("td", {
+  }, r[1]), /*#__PURE__*/React.createElement("td", {
     style: {
       padding: "6px 8px",
       color: T.textSecondary,
       lineHeight: 1.45
     }
-  }, r[2]))))), React.createElement("p", {
+  }, r[2]))))), /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12.5,
       color: T.textMuted,
       lineHeight: 1.55,
       margin: "0 0 4px"
     }
-  }, "If your workbook also has a sheet named \u201cProjects\u201d with a \u201cProject\u201d column and a \u201cStatus\u201d column (Active or Archived), Ledger reads that to set which products are active."), React.createElement("div", {
+  }, "If your workbook also has a sheet named \u201cProjects\u201d with a \u201cProject\u201d column and a \u201cStatus\u201d column (Active or Archived), Ledger reads that to set which products are active."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
       marginTop: 18,
       flexWrap: "wrap"
     }
-  }, React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: downloadTemplate,
     disabled: tplBusy,
     style: {
@@ -3467,7 +4227,7 @@ function TemplateGuide({
       color: "#fff",
       opacity: tplBusy ? 0.6 : 1
     }
-  }, tplBusy ? "Building…" : "Download xlsx template"), React.createElement("button", {
+  }, tplBusy ? "Building…" : "Download xlsx template"), /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
     style: {
       fontFamily: T.font,
@@ -3794,7 +4554,7 @@ function Overview({
       strokeWidth: 2,
       dot: false
     }), /*#__PURE__*/React.createElement(YAxis, {
-      domain: ['dataMin - 4', 'dataMax + 4'],
+      domain: ["dataMin - 4", "dataMax + 4"],
       hide: true
     }))))), /*#__PURE__*/React.createElement("div", {
       style: {
@@ -4568,7 +5328,9 @@ function parseCSVRows(text) {
       if (c === '"') inQuotes = true;else if (c === ",") {
         row.push(field);
         field = "";
-      } else if (c === "\r") {/* skip */} else if (c === "\n") {
+      } else if (c === "\r") {
+        /* skip */
+      } else if (c === "\n") {
         row.push(field);
         rows.push(row);
         row = [];
@@ -4619,13 +5381,13 @@ function parseTrackerRows(rows) {
     error: "Not a recognized tracker file (missing Project/Recommendation columns)."
   };
   const STATUS_MAP = {
-    "adopted": "adopted",
-    "communicated": "communicated",
-    "committed": "committed",
-    "canceled": "canceled",
-    "cancelled": "canceled",
-    "rejected": "communicated",
-    "deferred": "communicated",
+    adopted: "adopted",
+    communicated: "communicated",
+    committed: "committed",
+    canceled: "canceled",
+    cancelled: "canceled",
+    rejected: "communicated",
+    deferred: "communicated",
     "not yet communicated": "__exclude__"
   };
   const PRIORITY_MAP = {
@@ -9080,6 +9842,6 @@ function ScoringModal({
     }
   }, " — ", src.authors)))))));
 }
-ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(RAS));</script>
+ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(RAS, null));</script>
 </body>
 </html>
