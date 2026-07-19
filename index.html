@@ -1218,32 +1218,42 @@ function ChartWrap({
     }
     setBusy(false);
   };
+  const OFFSET = 12; // icon sits this many px from the card's top and right, everywhere
+  const BTN = 22;
+  const RESERVE = OFFSET + BTN + 8; // space the content keeps clear so nothing crowds the icon
   const POS = {
     tr: {
-      top: 4,
-      right: 4
+      top: OFFSET,
+      right: OFFSET
     },
     br: {
-      bottom: 8,
-      right: 8
+      bottom: OFFSET,
+      right: OFFSET
     },
     tl: {
-      top: 4,
-      left: 4
+      top: OFFSET,
+      left: OFFSET
     },
     bl: {
-      bottom: 6,
-      left: 6
+      bottom: OFFSET,
+      left: OFFSET
     }
   };
   const pos = POS[corner] || POS.tr;
+  const onRight = corner === "tr" || corner === "br";
+  const onLeft = corner === "tl" || corner === "bl";
   return /*#__PURE__*/React.createElement("div", {
     ref: ref,
     style: {
       position: "relative",
       ...style
     }
-  }, children, err && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      paddingRight: onRight ? RESERVE : 0,
+      paddingLeft: onLeft ? RESERVE : 0
+    }
+  }, children), err && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: 4,
@@ -1267,8 +1277,8 @@ function ChartWrap({
       position: "absolute",
       ...pos,
       zIndex: 10,
-      width: 24,
-      height: 24,
+      width: BTN,
+      height: BTN,
       padding: 0,
       background: T.bgCard,
       border: `1px solid ${T.border}`,
@@ -5138,8 +5148,7 @@ function ProjectCard({
     }
   }, p.owner)), /*#__PURE__*/React.createElement("div", {
     style: {
-      textAlign: "right",
-      paddingRight: 30
+      textAlign: "right"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
