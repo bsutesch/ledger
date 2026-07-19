@@ -5116,7 +5116,7 @@ function ProjectCard({
     onMouseLeave: e => e.currentTarget.style.boxShadow = T.shadow
   }, /*#__PURE__*/React.createElement(ChartWrap, {
     name: `ras-${p.name.replace(/[^a-zA-Z0-9]/g, "-")}`,
-    corner: "br"
+    corner: "tr"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -5138,7 +5138,8 @@ function ProjectCard({
     }
   }, p.owner)), /*#__PURE__*/React.createElement("div", {
     style: {
-      textAlign: "right"
+      textAlign: "right",
+      paddingRight: 30
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5215,8 +5216,7 @@ function ProjectCard({
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 8,
-      marginRight: 28
+      gap: 8
     }
   }, s.overall && /*#__PURE__*/React.createElement(SignalChip, {
     signal: s.overall,
