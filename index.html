@@ -1326,13 +1326,14 @@ function ChartWrap({
 }
 const inputStyle = {
   width: "100%",
+  height: 38,
   fontFamily: T.font,
   fontSize: 13,
   color: T.textBright,
   background: T.bgCard,
   border: `1px solid ${T.borderStrong}`,
   borderRadius: 8,
-  padding: "8px 10px",
+  padding: "0 10px",
   boxSizing: "border-box",
   outline: "none"
 };
@@ -1365,7 +1366,9 @@ function TextArea(props) {
     ...props,
     style: {
       ...inputStyle,
-      minHeight: 64,
+      height: "auto",
+      padding: "8px 10px",
+      minHeight: 72,
       resize: "vertical",
       ...props.style
     }
