@@ -3777,13 +3777,21 @@ function Gauge({
   const [sx, sy] = polar(180);
   const [ex, ey] = polar(0);
   const [vx, vy] = polar(180 - f * 180);
-  return /*#__PURE__*/React.createElement("svg", {
+  // The arc is SVG; the number is plain HTML laid over it. html2canvas renders SVG
+  // <text> unreliably (it can ignore text-anchor and clip at the edge), so keeping the
+  // number as HTML makes the on-screen view and the downloaded PNG match exactly.
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative",
+      width: "100%",
+      maxWidth: 128,
+      margin: "0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
     viewBox: "0 0 120 74",
     width: "100%",
     style: {
-      maxWidth: 128,
-      display: "block",
-      margin: "0 auto"
+      display: "block"
     }
   }, /*#__PURE__*/React.createElement("path", {
     d: `M ${sx} ${sy} A ${r} ${r} 0 0 1 ${ex} ${ey}`,
@@ -3797,14 +3805,20 @@ function Gauge({
     stroke: color,
     strokeWidth: thickness,
     strokeLinecap: "round"
-  }), /*#__PURE__*/React.createElement("text", {
-    x: cx,
-    y: cy - 3,
-    textAnchor: "middle",
-    fontFamily: T.font,
-    fontSize: "21",
-    fontWeight: "800",
-    fill: T.textBright
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      top: "70%",
+      transform: "translateY(-50%)",
+      textAlign: "center",
+      fontFamily: T.font,
+      fontSize: 20,
+      fontWeight: 800,
+      color: T.textBright,
+      lineHeight: 1
+    }
   }, display));
 }
 function InsightTile({
