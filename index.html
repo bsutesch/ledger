@@ -5938,6 +5938,13 @@ function Inventory({
   }, /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     small: true,
+    onClick: () => {
+      startAdd();
+      setShowHelper(true);
+    }
+  }, "Writing helper"), /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
+    small: true,
     onClick: () => setAddingProject(v => !v)
   }, "+ Project"), /*#__PURE__*/React.createElement(Btn, {
     onClick: startAdd
