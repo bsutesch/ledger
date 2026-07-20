@@ -1526,6 +1526,7 @@ function RAS() {
   const [activeProject, setActiveProject] = useState(null); // project id for detail
   const [toast, setToast] = useState(null);
   const [showScoring, setShowScoring] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [aboutSeen, setAboutSeen] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
@@ -1894,15 +1895,7 @@ function RAS() {
     style: {
       marginBottom: 28
     }
-  }, /*#__PURE__*/React.createElement("h1", {
-    style: {
-      fontSize: 34,
-      fontWeight: 700,
-      color: T.textBright,
-      margin: "0 0 8px",
-      letterSpacing: -0.6
-    }
-  }, "Ledger"), /*#__PURE__*/React.createElement("p", {
+  }, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 15,
       color: T.textSecondary,
@@ -1927,6 +1920,8 @@ function RAS() {
     }
   }, toast), showScoring && /*#__PURE__*/React.createElement(ScoringModal, {
     onClose: () => setShowScoring(false)
+  }), showFeedback && /*#__PURE__*/React.createElement(FeedbackModal, {
+    onClose: () => setShowFeedback(false)
   }), showTemplate && /*#__PURE__*/React.createElement(TemplateGuide, {
     onClose: () => setShowTemplate(false)
   }), showOnboarding && /*#__PURE__*/React.createElement(OnboardingWizard, {
@@ -2222,7 +2217,19 @@ function RAS() {
       color: T.textMuted,
       fontWeight: 500
     }
-  }, "Ledger · A Polite Robot tool · © ", new Date().getFullYear(), " Polite Robot"))));
+  }, "Ledger · A Polite Robot tool · © ", new Date().getFullYear(), " Polite Robot · ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowFeedback(true),
+    style: {
+      background: "none",
+      border: "none",
+      color: T.accentInk,
+      fontSize: 12,
+      fontWeight: 600,
+      fontFamily: T.font,
+      cursor: "pointer",
+      padding: 0
+    }
+  }, "Send feedback")))));
 }
 
 // ─── EXAMPLE / DEMO DATA ────────────────────────────────────────────────────────
@@ -10230,6 +10237,137 @@ function RecHelper({
       lineHeight: 1.4
     }
   }, "AI only redrafts wording. It never sets impact or any score — the checks above are computed, not judged.")));
+}
+function FeedbackModal({
+  onClose
+}) {
+  const cats = ["Bug", "Suggestion", "Question", "Other"];
+  const placeholders = {
+    Bug: "What happened, and what did you expect to happen?",
+    Suggestion: "What would you like to see, and why?",
+    Question: "What would you like to know?",
+    Other: "Tell us what's on your mind."
+  };
+  const [cat, setCat] = useState("Bug");
+  const [message, setMessage] = useState("");
+  const [email, setEmail] = useState("");
+  const submit = () => {
+    if (!message.trim()) return;
+    const body = "Category: " + cat + "\n\n" + message + "\n\n" + (email ? "Reply to: " + email : "No reply email provided");
+    window.location.href = "mailto:bsutesch@gmail.com?subject=" + encodeURIComponent("Ledger Feedback: " + cat) + "&body=" + encodeURIComponent(body);
+    onClose();
+  };
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 200,
+      background: "rgba(13,39,77,0.4)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: T.bgCard,
+      borderRadius: 14,
+      maxWidth: 500,
+      width: "100%",
+      boxShadow: T.shadowHover,
+      padding: 26
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 20,
+      fontWeight: 700,
+      color: T.textBright,
+      margin: 0
+    }
+  }, "Send feedback"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 22,
+      cursor: "pointer",
+      color: T.textMuted,
+      lineHeight: 1
+    }
+  }, "×")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: T.textSecondary,
+      lineHeight: 1.55,
+      margin: "0 0 16px"
+    }
+  }, "Report a bug, suggest an improvement, or ask a question. Your own data is never included — only your message and basic app info."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      marginBottom: 18
+    }
+  }, cats.map(c => /*#__PURE__*/React.createElement("button", {
+    key: c,
+    onClick: () => setCat(c),
+    style: {
+      fontFamily: T.font,
+      fontSize: 13,
+      fontWeight: 600,
+      cursor: "pointer",
+      padding: "6px 16px",
+      borderRadius: 20,
+      border: cat === c ? "1.5px solid " + T.accentInk : "1.5px solid " + T.borderStrong,
+      background: cat === c ? T.accentSoft : "transparent",
+      color: cat === c ? T.accentInk : T.textSecondary
+    }
+  }, c))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement(TextArea, {
+    value: message,
+    onChange: e => setMessage(e.target.value),
+    placeholder: placeholders[cat],
+    style: {
+      minHeight: 130
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    type: "email",
+    value: email,
+    onChange: e => setEmail(e.target.value),
+    placeholder: "Your email (optional, if you'd like a reply)"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      justifyContent: "flex-end",
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: onClose
+  }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "primary",
+    onClick: submit,
+    disabled: !message.trim()
+  }, "Submit feedback"))));
 }
 function ScoringModal({
   onClose
