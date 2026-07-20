@@ -1417,6 +1417,96 @@ async function callClaude(prompt, maxTokens = 700) {
   throw new Error("No AI model configured");
 }
 
+// ─── Recommendation writing helper (deterministic checks — no AI scoring) ───────
+// A well-formed recommendation follows the structure used across the suite: one
+// active-voice sentence with a strong action verb, the specific thing to change,
+// and a "so that <who> <benefit>" clause that names who benefits. Every check below
+// is pure string logic. Where AI is enabled it only redrafts wording; it never scores.
+const REC_STRONG_VERBS = ["add", "remove", "replace", "merge", "move", "rename", "default", "prefill", "pre-fill", "surface", "consolidate", "reorder", "split", "group", "show", "hide", "enable", "disable", "automate", "flag", "link", "label", "reduce", "combine", "separate", "reposition", "autosave", "validate", "sort", "filter", "collapse", "expand", "pin", "require", "allow", "cache", "batch", "route", "trim", "cut", "shorten", "align", "attach", "embed", "persist"];
+const REC_WEAK_VERBS = ["optimize", "improve", "streamline", "enhance", "leverage", "utilize", "refine", "polish", "revamp", "revisit", "rework", "better", "fix", "modernize", "elevate", "boost"];
+const REC_HEDGE_STARTS = ["consider", "explore", "look into", "think about", "maybe", "perhaps", "we should", "try to", "try", "investigate", "evaluate", "assess", "review", "examine", "possibly"];
+const REC_VAGUE = ["things", "stuff", "the experience", "the ux", "the process", "user experience", "seamless", "intuitive", "user-friendly", "user friendly", "robust", "holistic"];
+const REC_WHO = ["user", "users", "customer", "customers", "shopper", "shoppers", "admin", "admins", "member", "members", "people", "reviewer", "reviewers", "researcher", "researchers", "team", "teams", "agent", "agents", "operator", "operators", "buyer", "buyers", "visitor", "visitors", "respondent", "respondents", "they", "them", "the "];
+function recFirstWord(t) {
+  const m = (t || "").trim().toLowerCase().match(/[a-z][a-z-]*/);
+  return m ? m[0] : "";
+}
+function recStartsWithPhrase(t, phrases) {
+  const s = (t || "").trim().toLowerCase();
+  return phrases.find(p => s === p || s.startsWith(p + " ")) || null;
+}
+
+// Deterministic quality read of a recommendation sentence. Returns a fixed set of
+// checks, each pass / warn / fail, plus a simple count. No model is consulted.
+function analyzeRecommendation(text) {
+  const t = (text || "").trim();
+  const words = t ? t.split(/\s+/).filter(Boolean) : [];
+  const lower = t.toLowerCase();
+  const fw = recFirstWord(t);
+  const checks = [];
+  const hedge = recStartsWithPhrase(t, REC_HEDGE_STARTS);
+  const weak = REC_WEAK_VERBS.includes(fw);
+  checks.push({
+    label: "Opens with a concrete action verb",
+    state: !t ? "warn" : hedge ? "fail" : weak ? "fail" : "pass",
+    tip: hedge ? '"' + hedge + '" hedges — say what to change, not that someone should look into it.' : weak ? '"' + fw + '" is vague — name the concrete change (add, remove, replace, default…).' : "A strong verb makes the action unambiguous."
+  });
+  const hasSoThat = /\bso that\b/i.test(lower);
+  checks.push({
+    label: 'States a benefit with "so that…"',
+    state: !t ? "warn" : hasSoThat ? "pass" : "warn",
+    tip: hasSoThat ? "The benefit tells the team why it matters." : 'Add a "so that…" clause tying the change to a user outcome.'
+  });
+  const soIdx = lower.indexOf("so that");
+  const afterSo = soIdx >= 0 ? lower.slice(soIdx + 7) : "";
+  const namesWho = hasSoThat && REC_WHO.some(w => afterSo.includes(w));
+  checks.push({
+    label: "Names who benefits",
+    state: !t ? "warn" : namesWho ? "pass" : "warn",
+    tip: namesWho ? "The reader knows whose experience improves." : "Name the user or role in the benefit (the shopper, the admin…)."
+  });
+  const vague = REC_VAGUE.find(v => lower.includes(v));
+  checks.push({
+    label: "Specific, not vague",
+    state: !t ? "warn" : vague ? "warn" : "pass",
+    tip: vague ? 'Replace "' + vague.trim() + '" with the exact element you would change.' : "Concrete objects are testable; vague ones are not."
+  });
+  const sentenceCount = t ? t.split(/[.!?]+(?:\s|$)/).filter(s => s.trim().length).length : 0;
+  checks.push({
+    label: "One sentence",
+    state: sentenceCount > 1 ? "warn" : "pass",
+    tip: sentenceCount > 1 ? "Keep the recommendation to a single sentence; move detail to the notes." : "One sentence keeps it scannable."
+  });
+  const n = words.length;
+  checks.push({
+    label: "Right length (about 6–40 words)",
+    state: !t ? "warn" : n < 6 ? "warn" : n > 40 ? "warn" : "pass",
+    tip: n < 6 ? "Too short to be specific — add the object and the benefit." : n > 40 ? "Too long — tighten to one clear action." : "Long enough to be specific, short enough to scan."
+  });
+  const passCount = checks.filter(c => c.state === "pass").length;
+  return {
+    checks,
+    passCount,
+    total: checks.length
+  };
+}
+
+// Deterministic assembly of the four builder pieces into one Cisco-structured sentence.
+function assembleRecommendation(b) {
+  const verb = (b.verb || "").trim();
+  const object = (b.object || "").trim();
+  const who = (b.who || "").trim();
+  const benefit = (b.benefit || "").trim();
+  if (!verb && !object && !who && !benefit) return "";
+  let s = verb ? verb.charAt(0).toUpperCase() + verb.slice(1) : "";
+  if (object) s += (s ? " " : "") + object;
+  const clause = [who, benefit].filter(Boolean).join(" ");
+  if (clause) s += (s ? ", " : "") + "so that " + clause;
+  s = s.trim();
+  if (s && !/[.!?]$/.test(s)) s += ".";
+  return s;
+}
+
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────────
 function RAS() {
   const [state, setState] = useState(emptyState);
@@ -5690,6 +5780,7 @@ function Inventory({
   const [newProjName, setNewProjName] = useState("");
   const [newProjOwner, setNewProjOwner] = useState("");
   const [draft, setDraft] = useState(() => emptyRec(projects[0]?.id || ""));
+  const [showHelper, setShowHelper] = useState(false);
   const [sortCol, setSortCol] = useState(null); // "title"|"project"|"impact"|"status"|"owner"
   const [sortDir, setSortDir] = useState("asc");
   const [manageOwner, setManageOwner] = useState(null); // display name of owner being managed
@@ -6218,16 +6309,54 @@ function Inventory({
       statusMonth: e.target.value
     }),
     placeholder: "YYYY-MM"
-  }))), /*#__PURE__*/React.createElement(Field, {
-    label: "Recommendation"
-  }, /*#__PURE__*/React.createElement(TextInput, {
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      fontWeight: 600,
+      color: T.textSecondary
+    }
+  }, "Recommendation"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowHelper(true),
+    style: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      color: T.accentInk,
+      fontFamily: T.font,
+      fontSize: 11.5,
+      fontWeight: 600,
+      padding: 0
+    }
+  }, "Writing helper")), /*#__PURE__*/React.createElement(TextInput, {
     value: draft.title,
     onChange: e => setDraft({
       ...draft,
       title: e.target.value
     }),
     placeholder: "What should change, specifically"
-  })), /*#__PURE__*/React.createElement("div", {
+  })), showHelper && /*#__PURE__*/React.createElement(RecHelper, {
+    initialText: draft.title,
+    onClose: () => setShowHelper(false),
+    onApply: t => {
+      setDraft({
+        ...draft,
+        title: t
+      });
+      setShowHelper(false);
+    }
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -8572,6 +8701,7 @@ function ProjectDetail({
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(() => emptyRec(project?.id));
+  const [showHelper, setShowHelper] = useState(false);
   const cardRef = useRef(null);
   if (!project) return /*#__PURE__*/React.createElement("div", null, "Project not found. ", /*#__PURE__*/React.createElement(Btn, {
     small: true,
@@ -8925,16 +9055,54 @@ ${compressVoice(voice)}`;
       marginBottom: 14,
       background: T.bgSubtle
     }
-  }, /*#__PURE__*/React.createElement(Field, {
-    label: "Recommendation"
-  }, /*#__PURE__*/React.createElement(TextInput, {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      fontWeight: 600,
+      color: T.textSecondary
+    }
+  }, "Recommendation"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setShowHelper(true),
+    style: {
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      color: T.accentInk,
+      fontFamily: T.font,
+      fontSize: 11.5,
+      fontWeight: 600,
+      padding: 0
+    }
+  }, "Writing helper")), /*#__PURE__*/React.createElement(TextInput, {
     value: draft.title,
     onChange: e => setDraft({
       ...draft,
       title: e.target.value
     }),
     placeholder: "What should change, specifically"
-  })), /*#__PURE__*/React.createElement("div", {
+  })), showHelper && /*#__PURE__*/React.createElement(RecHelper, {
+    initialText: draft.title,
+    onClose: () => setShowHelper(false),
+    onApply: t => {
+      setDraft({
+        ...draft,
+        title: t
+      });
+      setShowHelper(false);
+    }
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
@@ -9709,6 +9877,342 @@ function Settings({
 }
 
 // ─── SCORING MODAL ──────────────────────────────────────────────────────────────
+function RecChecklist({
+  text
+}) {
+  const {
+    checks
+  } = analyzeRecommendation(text);
+  const icon = {
+    pass: "✓",
+    warn: "!",
+    fail: "×"
+  };
+  const col = {
+    pass: T.success,
+    warn: T.warning,
+    fail: T.danger
+  };
+  return /*#__PURE__*/React.createElement("div", null, checks.map((c, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "flex-start",
+      marginBottom: 7
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 16,
+      height: 16,
+      flex: "0 0 auto",
+      borderRadius: "50%",
+      background: col[c.state] + "22",
+      color: col[c.state],
+      fontSize: 11,
+      fontWeight: 700,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      marginTop: 1
+    }
+  }, icon[c.state]), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      fontWeight: 600,
+      color: T.textBright
+    }
+  }, c.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      lineHeight: 1.4
+    }
+  }, c.tip)))));
+}
+
+// Guidance + guided builder + live deterministic checks for writing one strong
+// recommendation. AI, when reachable, only redrafts wording (never a score).
+function RecHelper({
+  initialText,
+  onApply,
+  onClose
+}) {
+  const [text, setText] = useState(initialText || "");
+  const [b, setB] = useState({
+    verb: "",
+    object: "",
+    who: "",
+    benefit: ""
+  });
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiErr, setAiErr] = useState(null);
+  const built = assembleRecommendation(b);
+  const {
+    passCount,
+    total
+  } = analyzeRecommendation(text);
+  const ai = aiAvailable();
+  const polish = async () => {
+    setAiErr(null);
+    setAiBusy(true);
+    try {
+      const base = text.trim() || built;
+      const prompt = 'Rewrite this research recommendation as ONE active-voice sentence. Structure: a strong action verb, then the specific thing to change, then a "so that <who> <benefit>" clause that names who benefits. Do not use weak verbs (optimize, improve, streamline, enhance) or hedges (consider, explore). No preamble, no quotes. Return only the sentence.\n\nDraft: ' + base;
+      const out = await callClaude(prompt, 200);
+      const line = (out || "").split("\n").map(l => l.trim()).filter(Boolean)[0] || "";
+      setText(line.replace(/^["']+|["']+$/g, ""));
+    } catch (e) {
+      setAiErr("Could not reach the model. Your draft is unchanged.");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+  const cellLabel = (color, txt) => /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+      marginBottom: 6
+    }
+  }, txt);
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 200,
+      background: "rgba(13,39,77,0.4)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: T.bgCard,
+      borderRadius: 14,
+      maxWidth: 640,
+      width: "100%",
+      maxHeight: "88vh",
+      overflow: "auto",
+      boxShadow: T.shadowHover,
+      padding: 26
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("h2", {
+    style: {
+      fontSize: 20,
+      fontWeight: 700,
+      color: T.textBright,
+      margin: 0
+    }
+  }, "Write a strong recommendation"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 22,
+      cursor: "pointer",
+      color: T.textMuted,
+      lineHeight: 1
+    }
+  }, "×")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 13,
+      color: T.textSecondary,
+      lineHeight: 1.6,
+      marginTop: 0
+    }
+  }, "Write it as one active-voice sentence: a strong action verb, the specific thing to change, then a \"so that…\" benefit that names who it helps."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontFamily: T.mono,
+      background: T.bgInput,
+      borderRadius: 8,
+      padding: "10px 12px",
+      color: T.textSecondary,
+      marginBottom: 18
+    }
+  }, "[Verb] [the specific thing], so that [who] [benefit]."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 14,
+      marginBottom: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", null, cellLabel(T.success, "Strong verbs"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textSecondary,
+      lineHeight: 1.7
+    }
+  }, "Add, Remove, Replace, Merge, Default, Pre-fill, Surface, Reorder, Consolidate, Automate")), /*#__PURE__*/React.createElement("div", null, cellLabel(T.danger, "Avoid"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textSecondary,
+      lineHeight: 1.7
+    }
+  }, "Optimize, Improve, Streamline, Enhance (too vague); Consider, Explore (hedging)"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: T.textBright,
+      marginBottom: 10
+    }
+  }, "Build it piece by piece"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 14
+    }
+  }, /*#__PURE__*/React.createElement(Field, {
+    label: "Action verb"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: b.verb,
+    onChange: e => setB({
+      ...b,
+      verb: e.target.value
+    }),
+    placeholder: "Pre-fill"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Who benefits"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: b.who,
+    onChange: e => setB({
+      ...b,
+      who: e.target.value
+    }),
+    placeholder: "returning shoppers"
+  }))), /*#__PURE__*/React.createElement(Field, {
+    label: "The specific thing to change"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: b.object,
+    onChange: e => setB({
+      ...b,
+      object: e.target.value
+    }),
+    placeholder: "the shipping address on the checkout form from the saved profile"
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "So that… (the benefit)"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: b.benefit,
+    onChange: e => setB({
+      ...b,
+      benefit: e.target.value
+    }),
+    placeholder: "do not re-enter details they have already given"
+  })), built && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      background: T.accentSoft,
+      borderRadius: 8,
+      padding: "10px 12px",
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: T.textBright,
+      lineHeight: 1.5
+    }
+  }, built), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ink",
+    onClick: () => setText(built),
+    style: {
+      flex: "0 0 auto"
+    }
+  }, "Use this")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "baseline",
+      marginTop: 4,
+      marginBottom: 5
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      fontWeight: 600,
+      color: T.textSecondary
+    }
+  }, "Your recommendation"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 600,
+      color: passCount === total ? T.success : T.textMuted
+    }
+  }, passCount, " of ", total, " checks pass")), /*#__PURE__*/React.createElement(TextArea, {
+    value: text,
+    onChange: e => setText(e.target.value),
+    placeholder: "Pre-fill the shipping address on the checkout form from the saved profile, so that returning shoppers do not re-enter details they have already given.",
+    style: {
+      minHeight: 74
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      marginBottom: 2
+    }
+  }, /*#__PURE__*/React.createElement(RecChecklist, {
+    text: text
+  })), aiErr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.danger,
+      marginTop: 8
+    }
+  }, aiErr), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 10,
+      marginTop: 14,
+      paddingTop: 14,
+      borderTop: "1px solid " + T.border
+    }
+  }, /*#__PURE__*/React.createElement("div", null, ai && /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "subtle",
+    onClick: polish,
+    disabled: aiBusy || !(text.trim() || built)
+  }, aiBusy ? "Polishing…" : "Polish wording with AI")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: onClose
+  }, "Cancel"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "primary",
+    onClick: () => onApply(text.trim()),
+    disabled: !text.trim()
+  }, "Apply"))), ai && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      color: T.textMuted,
+      marginTop: 8,
+      lineHeight: 1.4
+    }
+  }, "AI only redrafts wording. It never sets impact or any score — the checks above are computed, not judged.")));
+}
 function ScoringModal({
   onClose
 }) {
