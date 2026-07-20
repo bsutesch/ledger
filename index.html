@@ -1426,7 +1426,9 @@ const REC_STRONG_VERBS = ["add", "remove", "replace", "merge", "move", "rename",
 const REC_WEAK_VERBS = ["optimize", "improve", "streamline", "enhance", "leverage", "utilize", "refine", "polish", "revamp", "revisit", "rework", "better", "fix", "modernize", "elevate", "boost"];
 const REC_HEDGE_STARTS = ["consider", "explore", "look into", "think about", "maybe", "perhaps", "we should", "try to", "try", "investigate", "evaluate", "assess", "review", "examine", "possibly"];
 const REC_VAGUE = ["things", "stuff", "the experience", "the ux", "the process", "user experience", "seamless", "intuitive", "user-friendly", "user friendly", "robust", "holistic"];
-const REC_WHO = ["user", "users", "customer", "customers", "shopper", "shoppers", "admin", "admins", "member", "members", "people", "reviewer", "reviewers", "researcher", "researchers", "team", "teams", "agent", "agents", "operator", "operators", "buyer", "buyers", "visitor", "visitors", "respondent", "respondents", "they", "them", "the "];
+// Verbs a benefit clause opens with when the subject has been dropped
+// ("...so that saves time"). Used only to detect a missing "who".
+const REC_BENEFIT_VERBS = new Set(["save", "saves", "reduce", "reduces", "cut", "cuts", "remove", "removes", "improve", "improves", "increase", "increases", "decrease", "decreases", "speed", "speeds", "avoid", "avoids", "prevent", "prevents", "eliminate", "eliminates", "lower", "lowers", "raise", "raises", "boost", "boosts", "streamline", "streamlines", "simplify", "simplifies", "shorten", "shortens", "minimize", "minimizes", "maximize", "maximizes", "enable", "enables", "allow", "allows", "ensure", "ensures", "provide", "provides", "deliver", "delivers", "create", "creates", "generate", "generates", "drive", "drives", "help", "helps", "keep", "keeps", "make", "makes", "give", "gives", "let", "lets", "free", "frees", "stop", "stops", "get", "gets", "move", "moves", "work", "works", "load", "loads", "run", "runs"]);
 function recFirstWord(t) {
   const m = (t || "").trim().toLowerCase().match(/[a-z][a-z-]*/);
   return m ? m[0] : "";
@@ -1457,13 +1459,19 @@ function analyzeRecommendation(text) {
     state: !t ? "warn" : hasSoThat ? "pass" : "warn",
     tip: hasSoThat ? "The benefit tells the team why it matters." : 'Add a "so that…" clause tying the change to a user outcome.'
   });
-  const soIdx = lower.indexOf("so that");
-  const afterSo = soIdx >= 0 ? lower.slice(soIdx + 7) : "";
-  const namesWho = hasSoThat && REC_WHO.some(w => afterSo.includes(w));
+
+  // "So that <who> <benefit>" needs a subject. A clause is missing its subject only
+  // when it opens straight with a benefit verb ("so that saves time"). Any other
+  // opener — a named role like "Sellers", a plain role, a pronoun, or an article —
+  // counts as naming who benefits, so no fixed list of roles is required.
+  const soPos = lower.indexOf("so that");
+  const rawAfter = soPos >= 0 ? t.slice(soPos + 7).trim() : "";
+  const firstTok = (rawAfter.match(/[A-Za-z][A-Za-z'’-]*/) || [""])[0];
+  const namesWho = hasSoThat && !!firstTok && !REC_BENEFIT_VERBS.has(firstTok.toLowerCase());
   checks.push({
     label: "Names who benefits",
-    state: !t ? "warn" : namesWho ? "pass" : "warn",
-    tip: namesWho ? "The reader knows whose experience improves." : "Name the user or role in the benefit (the shopper, the admin…)."
+    state: !t || !hasSoThat ? "warn" : namesWho ? "pass" : "warn",
+    tip: namesWho ? "The reader knows whose experience improves." : 'Start the benefit with the user or role ("so that sellers…"), not the outcome verb.'
   });
   const vague = REC_VAGUE.find(v => lower.includes(v));
   checks.push({
