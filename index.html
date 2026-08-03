@@ -436,6 +436,24 @@ const DEFAULT_THRESHOLDS = {
   slopeThreshold: 0.5
 };
 
+// Selectable RAS grade-band presets. Standard is the published set. Validated is
+// drawn from a researcher's rating of real scenarios. Each preset only sets the
+// three grade boundaries; the user can then alter them on demand.
+const GRADE_PRESETS = {
+  standard: {
+    label: "Standard",
+    gradeFair: 30,
+    gradeGood: 55,
+    gradeGreat: 80
+  },
+  validated: {
+    label: "Validated",
+    gradeFair: 37,
+    gradeGood: 57,
+    gradeGreat: 75
+  }
+};
+
 // Apply custom thresholds from state. Called at the top of each render so every
 // downstream computation (gradeFor, computeRAS, velocitySignal) uses the current
 // values without needing explicit parameter threading.
@@ -9437,6 +9455,18 @@ function Settings({
     });
     flash("Thresholds reset to published defaults");
   };
+  const gradeMatches = p => th.gradeFair === p.gradeFair && th.gradeGood === p.gradeGood && th.gradeGreat === p.gradeGreat;
+  const activeGradePreset = gradeMatches(GRADE_PRESETS.standard) ? "standard" : gradeMatches(GRADE_PRESETS.validated) ? "validated" : "custom";
+  const applyGradePreset = key => {
+    const p = GRADE_PRESETS[key];
+    onChange({
+      ...th,
+      gradeFair: p.gradeFair,
+      gradeGood: p.gradeGood,
+      gradeGreat: p.gradeGreat
+    });
+    flash(p.label + " grade bands applied");
+  };
   const ThresholdField = ({
     label,
     hint,
@@ -9718,9 +9748,96 @@ function Settings({
     style: {
       fontSize: 12,
       color: T.textMuted,
+      marginBottom: 14
+    }
+  }, "Pick a preset, then fine-tune on demand. Poor always starts at 0 and Great always ends at 100."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      flexWrap: "wrap",
+      marginBottom: 10
+    }
+  }, [["standard", "Standard"], ["validated", "Validated *"]].map(([key, label]) => {
+    const on = activeGradePreset === key;
+    return /*#__PURE__*/React.createElement("button", {
+      key: key,
+      onClick: () => applyGradePreset(key),
+      style: {
+        fontFamily: T.font,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+        padding: "6px 16px",
+        borderRadius: 20,
+        border: on ? "1.5px solid " + T.accentInk : "1.5px solid " + T.borderStrong,
+        background: on ? T.accentSoft : "transparent",
+        color: on ? T.accentInk : T.textSecondary
+      }
+    }, label);
+  }), activeGradePreset === "custom" && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: T.textMuted,
+      background: T.bgInput,
+      border: "1px solid " + T.border,
+      padding: "3px 10px",
+      borderRadius: 20
+    }
+  }, "Custom")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      lineHeight: 1.5,
+      borderLeft: "2px solid " + T.border,
+      paddingLeft: 10,
       marginBottom: 16
     }
-  }, "Set the lower bound of each grade. Poor is always 0 up to the Fair threshold."), /*#__PURE__*/React.createElement(ThresholdField, {
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.textSecondary
+    }
+  }, "* Validated"), " bands come from a researcher's perspective on real scenarios and how they rate them, so a grade reflects that judgment rather than the original published cutoffs."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      height: 42,
+      borderRadius: 8,
+      overflow: "hidden",
+      border: "1px solid " + T.border,
+      marginBottom: 18
+    }
+  }, GRADE_BANDS.map(b => {
+    const bg = b.color + "26";
+    return /*#__PURE__*/React.createElement("div", {
+      key: b.grade,
+      title: b.grade + " " + b.min + "-" + b.max,
+      style: {
+        flexGrow: b.max - b.min + 1,
+        flexBasis: 0,
+        minWidth: 0,
+        background: bg,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        lineHeight: 1.2,
+        color: b.color
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        fontWeight: 700
+      }
+    }, b.grade), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10,
+        fontWeight: 600,
+        opacity: 0.9,
+        fontFamily: T.mono
+      }
+    }, b.min, "\u2013", b.max));
+  })), /*#__PURE__*/React.createElement(ThresholdField, {
     label: "Fair starts at",
     field: "gradeFair",
     min: 5,
@@ -9731,32 +9848,14 @@ function Settings({
     field: "gradeGood",
     min: th.gradeFair + 1,
     max: 79,
-    hint: "Below this (and above Fair) is Fair."
+    hint: "Between the Fair and Good values is Fair."
   }), /*#__PURE__*/React.createElement(ThresholdField, {
     label: "Great starts at",
     field: "gradeGreat",
     min: th.gradeGood + 1,
     max: 99,
-    hint: "Below this (and above Good) is Good. Above is Great."
-  }), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap",
-      marginTop: 8
-    }
-  }, GRADE_BANDS.map(g => /*#__PURE__*/React.createElement("span", {
-    key: g.grade,
-    style: {
-      fontSize: 11,
-      fontWeight: 700,
-      color: g.color,
-      background: `${g.color}14`,
-      border: `1px solid ${g.color}40`,
-      padding: "3px 10px",
-      borderRadius: 8
-    }
-  }, g.grade, " ", g.min, "–", g.max)))), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
+    hint: "Between Good and this value is Good; at or above is Great."
+  })), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 14,
       fontWeight: 700,
