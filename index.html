@@ -401,7 +401,16 @@ const IMPACT_POINTS = {
   low: 1
 };
 let COMMITTED_POINTS = 0.66;
-const STATUSES = ["communicated", "committed", "adopted", "canceled"];
+// Runtime-configurable pool handling for canceled/rejected/deferred, set from
+// thresholds via applyThresholds(). "exclude" = not counted anywhere in the
+// ratio. "include" = stays in the pool, scored as 0 points, same as a plain
+// unactioned communicated item.
+let STATUS_HANDLING = {
+  canceled: "exclude",
+  rejected: "include",
+  deferred: "include"
+};
+const STATUSES = ["communicated", "committed", "adopted", "canceled", "rejected", "deferred"];
 const IMPACTS = ["high", "medium", "low"];
 let GRADE_BANDS = [{
   grade: "Poor",
@@ -433,7 +442,16 @@ const DEFAULT_THRESHOLDS = {
   velStop: 1,
   velCaution: 3,
   committedPts: 0.66,
-  slopeThreshold: 0.5
+  slopeThreshold: 0.5,
+  // How canceled, rejected, and deferred recommendations affect the RAS
+  // denominator. "exclude" removes them from the pool entirely, the way
+  // canceled behaves by default. "include" keeps them in the pool scored at
+  // zero points, the way an unactioned "communicated" item behaves. Rejected
+  // and deferred default to "include" to match Ledger's original behavior,
+  // where both were silently folded into communicated.
+  statusCanceled: "exclude",
+  statusRejected: "include",
+  statusDeferred: "include"
 };
 
 // Selectable RAS grade-band presets. Standard is the published set. Validated is
@@ -487,6 +505,11 @@ function applyThresholds(t) {
   VELOCITY_THRESHOLDS.cautionMax = th.velCaution;
   COMMITTED_POINTS = th.committedPts;
   SLOPE_THRESHOLD = th.slopeThreshold;
+  STATUS_HANDLING = {
+    canceled: th.statusCanceled || "exclude",
+    rejected: th.statusRejected || "include",
+    deferred: th.statusDeferred || "include"
+  };
 }
 function gradeFor(ras) {
   if (ras == null || isNaN(ras)) return null;
@@ -494,9 +517,22 @@ function gradeFor(ras) {
   return GRADE_BANDS[GRADE_BANDS.length - 1];
 }
 
+// Whether a recommendation in this status is removed from the RAS pool
+// entirely, per the current Settings configuration. Canceled defaults to
+// excluded; rejected and deferred default to included (scored as 0, same as
+// an unactioned communicated item). Used everywhere the app filters a pool
+// of recommendations, so every view stays consistent with the RAS formula.
+function isExcludedStatus(status) {
+  if (status === "canceled") return STATUS_HANDLING.canceled === "exclude";
+  if (status === "rejected") return STATUS_HANDLING.rejected === "exclude";
+  if (status === "deferred") return STATUS_HANDLING.deferred === "exclude";
+  return false;
+}
+
 // Aggregate a list of recommendation objects into the count buckets the RAS
 // formula needs. A recommendation: { impact:'high'|'medium'|'low', status:'...' }
-// Canceled items are dropped from every bucket (excluded from the pool) [1].
+// Canceled, rejected, and deferred are each either dropped from the pool
+// entirely or folded in as zero-point (unadopted) members, per Settings [1].
 function aggregate(recs) {
   const a = {
     highTotal: 0,
@@ -508,11 +544,17 @@ function aggregate(recs) {
     committed: 0,
     communicated: 0,
     canceled: 0,
+    rejected: 0,
+    deferred: 0,
     total: 0
   };
   for (const r of recs || []) {
-    if (r.status === "canceled") {
-      a.canceled++;
+    if (r.status === "canceled" || r.status === "rejected" || r.status === "deferred") {
+      if (r.status === "canceled") a.canceled++;else if (r.status === "rejected") a.rejected++;else a.deferred++;
+      if (isExcludedStatus(r.status)) continue;
+      // Included: stays in the pool, scored as 0 points, same as communicated.
+      a.total++;
+      if (r.impact === "high") a.highTotal++;else if (r.impact === "medium") a.medTotal++;else if (r.impact === "low") a.lowTotal++;
       continue;
     }
     a.total++;
@@ -566,7 +608,16 @@ function computeRAS(agg) {
         points: 0
       },
       canceled: {
-        count: agg.canceled
+        count: agg.canceled,
+        excluded: STATUS_HANDLING.canceled === "exclude"
+      },
+      rejected: {
+        count: agg.rejected,
+        excluded: STATUS_HANDLING.rejected === "exclude"
+      },
+      deferred: {
+        count: agg.deferred,
+        excluded: STATUS_HANDLING.deferred === "exclude"
       }
     }
   };
@@ -581,7 +632,7 @@ function computeRAS(agg) {
 // only earns points from its status month onward; before that it counts as
 // communicated. Canceled rows are excluded from the pool entirely.
 function rebuildRasSeriesFromRecs(recs) {
-  const list = (recs || []).filter(r => r && r.status !== "canceled" && r.createdMonth);
+  const list = (recs || []).filter(r => r && !isExcludedStatus(r.status) && r.createdMonth);
   if (!list.length) return {};
   let lo = null,
     hi = null;
@@ -649,11 +700,15 @@ function velocitySignal(velocity) {
 
 // 3-month average recommendation velocity from a monthly created-count series.
 // createdByMonth: { '2026-05': 4, ... }; months: ordered array of YYYY-MM.
+// The snapshot is taken at the start of the month for the month that just
+// ended, so velocity covers the three completed months up to and including the
+// prior month, and never the current (still-filling) month.
 function velocity3m(createdByMonth, months) {
   if (!months || !months.length) return 0;
-  const last3 = months.slice(-3);
-  const vals = last3.map(m => createdByMonth[m] || 0);
-  if (!vals.length) return 0;
+  const cur = months[months.length - 1];
+  const prev = ymPrevMonth(cur);
+  const completed = [ymAdd(prev, -2), ymAdd(prev, -1), prev];
+  const vals = completed.map(m => createdByMonth[m] || 0);
   return Math.round(vals.reduce((s, v) => s + v, 0) / vals.length * 10) / 10;
 }
 
@@ -816,6 +871,12 @@ function ymNow() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
+// The month whose data is complete. Velocity and other rolling metrics are read
+// as if the snapshot is taken on the 1st for the month that just ended, so the
+// current in-progress month is never counted while it is still filling up.
+function ymPrevMonth(ym) {
+  return ymAdd(ym || ymNow(), -1);
+}
 function ymLabel(ym) {
   if (!ym) return "";
   const [y, m] = ym.split("-").map(Number);
@@ -842,6 +903,24 @@ function windowMonths(end, count = 12) {
 }
 function uid() {
   return Math.random().toString(36).slice(2, 10);
+}
+
+// Whole months between two YYYY-MM months.
+function monthsElapsed(fromYM, toYM) {
+  if (!fromYM || !toYM) return 0;
+  const [fy, fm] = fromYM.split("-").map(Number);
+  const [ty, tm] = toYM.split("-").map(Number);
+  return (ty - fy) * 12 + (tm - fm);
+}
+// Recommendations left in "communicated" for 12+ months (about 365 days) need
+// their status refreshed. Measured from the month the rec entered its current
+// status. Returns them most-stale first, each tagged with how many months.
+function staleCommunicated(recs, asOf) {
+  const now = asOf || ymNow();
+  return (recs || []).filter(r => r && r.status === "communicated" && monthsElapsed(r.statusMonth || r.createdMonth, now) >= 12).map(r => ({
+    rec: r,
+    monthsStale: monthsElapsed(r.statusMonth || r.createdMonth, now)
+  })).sort((a, b) => b.monthsStale - a.monthsStale);
 }
 
 // ─── default voice profile (compressed) — overdriven by an uploaded profile ────
@@ -935,6 +1014,8 @@ function liveProject(projectId, recs, aggregates) {
       committed: ov.committed || 0,
       communicated: ov.communicated != null ? ov.communicated : Math.max(0, (ov.highTotal || 0) + (ov.medTotal || 0) + (ov.lowTotal || 0) - (ov.highAdopted || 0) - (ov.medAdopted || 0) - (ov.lowAdopted || 0) - (ov.committed || 0)),
       canceled: ov.canceled || 0,
+      rejected: ov.rejected || 0,
+      deferred: ov.deferred || 0,
       total: (ov.highTotal || 0) + (ov.medTotal || 0) + (ov.lowTotal || 0)
     };
     const ras = computeRAS(agg);
@@ -1007,13 +1088,17 @@ const STATUS_LABEL = {
   communicated: "Communicated",
   committed: "Committed",
   adopted: "Adopted",
-  canceled: "Canceled"
+  canceled: "Canceled",
+  rejected: "Rejected",
+  deferred: "Deferred"
 };
 const STATUS_COLOR = {
   communicated: T.textMuted,
   committed: T.warning,
   adopted: T.success,
-  canceled: T.textDim
+  canceled: T.textDim,
+  rejected: T.danger,
+  deferred: T.textMuted
 };
 
 // ─── UI atoms ───────────────────────────────────────────────────────────────────
@@ -3454,12 +3539,15 @@ function mergeImport(state, payload) {
     // rather than mutating the originals held in state.
     const idxByKey = new Map();
     next.recs.forEach((r, i) => {
-      const k = r.trackerId ? `id:${r.trackerId}` : `t:${r.projectId}:${(r.title || "").toLowerCase()}`;
+      const k = r.trackerId ? `id:${r.projectId}:${r.trackerId}` : `t:${r.projectId}:${(r.title || "").toLowerCase()}`;
       idxByKey.set(k, i);
     });
     let added = 0,
       updated = 0;
     for (const tr of payload.trackerRecs) {
+      // Skip any row that has an ID but no recommendation text. It is not a real
+      // recommendation, so it must not create a project or a blank rec.
+      if (!(tr.title || "").trim()) continue;
       let id = byName[tr.project];
       if (!id) {
         id = uid();
@@ -3477,7 +3565,7 @@ function mergeImport(state, payload) {
           created: {}
         };
       }
-      const key = tr.id ? `id:${tr.id}` : `t:${id}:${(tr.title || "").toLowerCase()}`;
+      const key = tr.id ? `id:${id}:${tr.id}` : `t:${id}:${(tr.title || "").toLowerCase()}`;
       const fields = {
         projectId: id,
         title: tr.title || "",
@@ -4248,7 +4336,7 @@ function TemplateGuide({
       XLSX.utils.book_append_sheet(wb, wsR, "Recommendations");
 
       // — How to use sheet —
-      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. A specific person accountable for the decision. Feeds the Status-by-owner view."], ["Done Definition", "Optional. What 'done' looks like, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date Communicated", "Recommended. YYYY-MM. The month the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended. YYYY-MM. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled rows are excluded."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
+      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. A specific person accountable for the decision. Feeds the Status-by-owner view."], ["Done Definition", "Optional. What 'done' looks like, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date Communicated", "Recommended. YYYY-MM. The month the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended. YYYY-MM. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
       const wsH = XLSX.utils.aoa_to_sheet(how);
       wsH["!cols"] = [{
         wch: 22
@@ -5607,8 +5695,8 @@ function parseTrackerRows(rows) {
     committed: "committed",
     canceled: "canceled",
     cancelled: "canceled",
-    rejected: "communicated",
-    deferred: "communicated",
+    rejected: "rejected",
+    deferred: "deferred",
     "not yet communicated": "__exclude__"
   };
   const PRIORITY_MAP = {
@@ -5636,7 +5724,10 @@ function parseTrackerRows(rows) {
     const row = rows[r];
     const project = get(row, ci.project);
     const title = get(row, ci.rec).replace(/\s+/g, " ");
-    if (!project || !title) continue;
+    // A row with an ID (or any other cell) filled in but no recommendation text
+    // is not a recommendation. Skip it outright.
+    if (!title) continue;
+    if (!project) continue;
     const rawStatus = get(row, ci.status).toLowerCase();
     const status = STATUS_MAP[rawStatus] || "communicated";
     if (status === "__exclude__") {
@@ -7836,17 +7927,17 @@ function analyzePortfolio(projects, recs) {
   };
 
   // AI vs non-AI adoption (from inventory; reflects seed unless individual recs imported).
-  const aiRecs = recs.filter(r => r.isAI && r.status !== "canceled");
-  const nonAiRecs = recs.filter(r => !r.isAI && r.status !== "canceled");
+  const aiRecs = recs.filter(r => r.isAI && !isExcludedStatus(r.status));
+  const nonAiRecs = recs.filter(r => !r.isAI && !isExcludedStatus(r.status));
   const adoptRate = list => {
-    const pool = list.filter(r => r.status !== "canceled");
+    const pool = list.filter(r => !isExcludedStatus(r.status));
     if (!pool.length) return null;
     return Math.round(pool.filter(r => r.status === "adopted").length / pool.length * 100);
   };
   const breakage = projects.map(p => {
     const own = recs.filter(r => r.projectId === p.id);
     const highStuck = own.filter(r => r.impact === "high" && r.status === "communicated").length;
-    const highTotal = own.filter(r => r.impact === "high" && r.status !== "canceled").length;
+    const highTotal = own.filter(r => r.impact === "high" && !isExcludedStatus(r.status)).length;
     const stuckRate = highTotal ? Math.round(highStuck / highTotal * 100) : 0;
     return {
       id: p.id,
@@ -7870,7 +7961,7 @@ function analyzePortfolio(projects, recs) {
   const byOwner = {};
   recs.forEach(r => {
     const o = (r.owner || "").trim();
-    if (!o || r.status === "canceled" || !pids.has(r.projectId)) return;
+    if (!o || isExcludedStatus(r.status) || !pids.has(r.projectId)) return;
     const g = byOwner[o] || (byOwner[o] = {
       owner: o,
       owned: 0,
@@ -7952,6 +8043,15 @@ function Insights({
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState("active"); // "active" | "all"
   const a = useMemo(() => analyzePortfolio(scope === "active" ? projects.filter(p => p.active) : projects, recs), [projects, recs, scope]);
+  const stale = useMemo(() => {
+    const inScope = scope === "active" ? projects.filter(p => p.active) : projects;
+    const pids = new Set(inScope.map(p => p.id));
+    const pname = Object.fromEntries(inScope.map(p => [p.id, p.name]));
+    return staleCommunicated(recs.filter(r => pids.has(r.projectId))).map(s => ({
+      ...s,
+      project: pname[s.rec.projectId] || "\u2014"
+    }));
+  }, [projects, recs, scope]);
   const genNarrative = async () => {
     setBusy(true);
     try {
@@ -8043,7 +8143,92 @@ ${compressVoice(voice)}`;
       background: scope === val ? T.accentSoft : T.bgInput,
       color: scope === val ? T.accentInk : T.textMuted
     }
-  }, label))), /*#__PURE__*/React.createElement(Card, {
+  }, label))), stale.length > 0 && /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 16,
+      borderLeft: `3px solid ${T.warning}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 700,
+      color: T.textBright
+    }
+  }, "Needs a status update"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: T.warning,
+      background: T.warning + "1a",
+      padding: "3px 10px",
+      borderRadius: 20
+    }
+  }, stale.length)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.textMuted,
+      marginBottom: 10,
+      lineHeight: 1.5
+    }
+  }, "These recommendations have sat in communicated for a year or more. Confirm whether each was adopted, committed to, or should be closed, so the score reflects reality."), /*#__PURE__*/React.createElement("div", null, stale.slice(0, 12).map(({
+    rec,
+    project,
+    monthsStale
+  }) => /*#__PURE__*/React.createElement("div", {
+    key: rec.id,
+    onClick: () => onOpen && onOpen(rec.projectId),
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      padding: "9px 0",
+      borderTop: `1px solid ${T.border}`,
+      cursor: onOpen ? "pointer" : "default"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: T.textBright,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, rec.title || "Untitled recommendation"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted
+    }
+  }, project)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: "0 0 auto",
+      fontSize: 11.5,
+      fontWeight: 600,
+      color: T.warning,
+      fontFamily: T.mono
+    }
+  }, monthsStale, " mo"))), stale.length > 12 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      paddingTop: 9,
+      borderTop: `1px solid ${T.border}`
+    }
+  }, "and ", stale.length - 12, " more."))), /*#__PURE__*/React.createElement(Card, {
     style: {
       marginBottom: 16
     }
@@ -9862,6 +10047,98 @@ function Settings({
       color: T.textBright,
       marginBottom: 4
     }
+  }, "Recommendation status handling"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.textMuted,
+      marginBottom: 16
+    }
+  }, "The RAS formula divides earned points by the maximum possible. This controls whether canceled, rejected, and deferred recommendations count toward that maximum at all, or are removed from the pool entirely."), [{
+    key: "statusCanceled",
+    label: "Canceled",
+    desc: "A recommendation that was withdrawn before a decision was made."
+  }, {
+    key: "statusRejected",
+    label: "Rejected",
+    desc: "A recommendation a stakeholder considered and declined."
+  }, {
+    key: "statusDeferred",
+    label: "Deferred",
+    desc: "A recommendation postponed to a later date, not yet decided."
+  }].map((row, i) => /*#__PURE__*/React.createElement("div", {
+    key: row.key,
+    style: {
+      padding: "14px 0",
+      borderTop: i === 0 ? "none" : `1px solid ${T.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 16,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxWidth: 340
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: T.textBright
+    }
+  }, row.label), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      marginTop: 2,
+      lineHeight: 1.45
+    }
+  }, row.desc)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      flex: "0 0 auto"
+    }
+  }, [["exclude", "Exclude from pool"], ["include", "Count as unadopted"]].map(([val, lbl]) => {
+    const on = (th[row.key] || "include") === val;
+    return /*#__PURE__*/React.createElement("button", {
+      key: val,
+      onClick: () => onChange({
+        ...th,
+        [row.key]: val
+      }),
+      style: {
+        fontFamily: T.font,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        padding: "6px 13px",
+        borderRadius: 20,
+        whiteSpace: "nowrap",
+        border: on ? "1.5px solid " + T.accentInk : "1.5px solid " + T.borderStrong,
+        background: on ? T.accentSoft : "transparent",
+        color: on ? T.accentInk : T.textSecondary
+      }
+    }, lbl);
+  }))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      lineHeight: 1.5,
+      borderLeft: "2px solid " + T.border,
+      paddingLeft: 10,
+      marginTop: 4
+    }
+  }, "Exclude from pool removes it from both sides of the RAS ratio, as if it never existed. Count as unadopted keeps it in the denominator scored at 0 points, the same as a recommendation that was communicated but never acted on \u2014 it pulls the score down. Canceled defaults to excluded; rejected and deferred default to counted as unadopted.")), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 700,
+      color: T.textBright,
+      marginBottom: 4
+    }
   }, "Velocity signal"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
@@ -10848,7 +11125,7 @@ function ScoringModal({
     style: {
       margin: "0 0 10px"
     }
-  }, "Actual value sums adopted recommendations by impact (high 3, medium 2, low 1) and adds 0.66 for every committed recommendation regardless of impact. Communicated items count as 0. Canceled items leave the pool entirely. Total possible value is every non-canceled recommendation scored as if it were adopted."), /*#__PURE__*/React.createElement("h3", {
+  }, "Actual value sums adopted recommendations by impact (high 3, medium 2, low 1) and adds 0.66 for every committed recommendation regardless of impact. Communicated items count as 0. Canceled, rejected, and deferred items are either excluded from the pool or counted as unadopted (0 points), per Settings. Total possible value is every recommendation still in the pool, scored as if it were adopted."), /*#__PURE__*/React.createElement("h3", {
     style: {
       fontSize: 15,
       color: T.textBright,
