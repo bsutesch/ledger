@@ -5821,6 +5821,10 @@ function Inventory({
           va = (a.owner || "").toLowerCase();
           vb = (b.owner || "").toLowerCase();
           break;
+        case "researchers":
+          va = [a.researcher2, a.researcher3].filter(Boolean).join(", ").toLowerCase();
+          vb = [b.researcher2, b.researcher3].filter(Boolean).join(", ").toLowerCase();
+          break;
         default:
           return 0;
       }
@@ -6414,7 +6418,7 @@ function Inventory({
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "0.5fr 1.6fr 0.9fr 0.8fr 1fr 0.7fr 32px",
+      gridTemplateColumns: "0.5fr 1.6fr 0.9fr 0.8fr 1fr 0.7fr 0.9fr 32px",
       gap: 12,
       fontSize: 11,
       fontWeight: 700,
@@ -6443,6 +6447,9 @@ function Inventory({
   }, {
     key: "owner",
     label: "Owner"
+  }, {
+    key: "researchers",
+    label: "Additional researchers"
   }].map(col => /*#__PURE__*/React.createElement("div", {
     key: col.key,
     onClick: () => toggleSort(col.key),
@@ -6489,7 +6496,7 @@ function RecRow({
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
-      gridTemplateColumns: "0.5fr 1.6fr 0.9fr 0.8fr 1fr 0.7fr 32px",
+      gridTemplateColumns: "0.5fr 1.6fr 0.9fr 0.8fr 1fr 0.7fr 0.9fr 32px",
       gap: 12,
       alignItems: "center",
       padding: "10px 16px",
@@ -6599,7 +6606,7 @@ function RecRow({
       fontWeight: 600
     }
   })), /*#__PURE__*/React.createElement("div", {
-    title: [r.owner, r.researcher2, r.researcher3].filter(Boolean).join(", "),
+    title: r.owner || "",
     style: {
       minWidth: 0,
       color: T.textMuted,
@@ -6608,7 +6615,17 @@ function RecRow({
       textOverflow: "ellipsis",
       whiteSpace: "nowrap"
     }
-  }, [r.owner, r.researcher2, r.researcher3].filter(Boolean).join(", ") || "—"), readOnly ? /*#__PURE__*/React.createElement("span", null) : /*#__PURE__*/React.createElement("button", {
+  }, r.owner || "—"), /*#__PURE__*/React.createElement("div", {
+    title: [r.researcher2, r.researcher3].filter(Boolean).join(", "),
+    style: {
+      minWidth: 0,
+      color: T.textMuted,
+      fontSize: 12,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, [r.researcher2, r.researcher3].filter(Boolean).join(", ") || "—"), readOnly ? /*#__PURE__*/React.createElement("span", null) : /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       if (window.confirm(`Remove "${(r.title || "Untitled").slice(0, 60)}"? This cannot be undone.`)) onRemove(r.id);
     },
