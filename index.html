@@ -785,15 +785,13 @@ function overallSignal(velSig, rasSig) {
   return INVESTMENT_GRID[`${velSig}|${rasSig}`] || null;
 }
 
-// Full per-project signal bundle. velocityOverride, when provided, replaces the
-// rec-derived velocity with the authoritative 3-month figure from the tracker.
+// Full per-project signal bundle: velocity, RAS trend, and overall investment signal.
 function projectSignals({
   createdByMonth,
   rasByMonth,
-  months,
-  velocityOverride
+  months
 }) {
-  const vel = velocityOverride != null ? velocityOverride : velocity3m(createdByMonth || {}, months);
+  const vel = velocity3m(createdByMonth || {}, months);
   const velSig = velocitySignal(vel);
   const trend = rasTrend(rasByMonth || {}, months);
   const recent6 = (months || []).slice(-6).map(m => rasByMonth?.[m]).filter(v => typeof v === "number");
@@ -946,9 +944,6 @@ function emptyState() {
     history: {},
     // { [projectId]: { ras:{ym:val}, created:{ym:n} } } — back-data
     aggregates: {},
-    // { [projectId]: agg } — authoritative RAS inputs from the "DO NOT EDIT - RAS" tab
-    velocities: {},
-    // { [projectId]: number } — authoritative 3-month velocity from the "DO NOT EDIT - Ops reporting" tab
     statusHistory: {},
     // { [projectId]: { ym: 'CONTINUE'|'CAUTION'|'STOP' } } — authoritative investment-status history
     mode: null,
@@ -1001,8 +996,8 @@ function createdByMonth(projectId, recs, history) {
 }
 
 // Current live aggregate + RAS for a project. If an authoritative aggregate is
-// present (imported from the "DO NOT EDIT - RAS" tab) it drives the score;
-// otherwise the project's own recommendation inventory is aggregated.
+// present it drives the score; otherwise the project's own recommendation
+// inventory is aggregated.
 function liveProject(projectId, recs, aggregates) {
   const ov = aggregates && aggregates[projectId];
   if (ov) {
@@ -1743,12 +1738,10 @@ function RAS() {
       const live = liveProject(p.id, state.recs, state.aggregates);
       const ras = rasSeries(p.id, state.recs, state.history, asOf, state.aggregates);
       const created = createdByMonth(p.id, state.recs, state.history);
-      const velOv = state.velocities && state.velocities[p.id] != null ? Math.round(state.velocities[p.id]) : undefined;
       const sig = projectSignals({
         createdByMonth: created,
         rasByMonth: ras,
-        months: win,
-        velocityOverride: velOv
+        months: win
       });
       // Authoritative recorded investment status (imported) wins for the current
       // month, so Overview / Matrix / Signal history all agree.
@@ -2278,16 +2271,6 @@ function RAS() {
             statusCount
           } = next.__lastImport;
           flash(`Imported history — RAS for ${rasCount}, investment status for ${statusCount} projects`);
-        } else if (next.__lastImport?.kind === "rasAgg") {
-          const {
-            count,
-            velCount,
-            month
-          } = next.__lastImport;
-          const parts = [];
-          if (count) parts.push(`RAS for ${count}`);
-          if (velCount) parts.push(`velocity for ${velCount}`);
-          flash(parts.length ? `Updated ${parts.join(" and ")} project${count > 1 || velCount > 1 ? "s" : ""} as of ${ymLabel(month)}` : "No RAS or velocity data found");
         } else if (next.__lastImport?.kind === "tracker") {
           const {
             added,
@@ -3401,9 +3384,6 @@ function mergeImport(state, payload) {
     aggregates: {
       ...(state.aggregates || {})
     },
-    velocities: {
-      ...(state.velocities || {})
-    },
     statusHistory: {
       ...(state.statusHistory || {})
     }
@@ -3470,66 +3450,6 @@ function mergeImport(state, payload) {
       kind: "history",
       rasCount,
       statusCount
-    };
-    return next;
-  }
-
-  // Authoritative tabs: RAS aggregates drive the score, Ops velocities drive the
-  // velocity signal. Create any project either tab references.
-  if (payload.rasAgg || payload.velocities) {
-    const ensure = name => {
-      let id = byName[name];
-      if (!id) {
-        id = uid();
-        next.projects.push({
-          id,
-          name,
-          owner: "",
-          active: false,
-          createdAt: ymNow(),
-          source: "tracker-tabs"
-        });
-        byName[name] = id;
-        if (!next.history[id]) next.history[id] = {
-          ras: {},
-          created: {}
-        };
-      }
-      return id;
-    };
-    let rasCount = 0,
-      velCount = 0;
-    // Stamp this upload as the current month so a monthly tracker refresh appends
-    // a new RAS point to the history and moves everything forward.
-    const month = ymNow();
-    if (payload.rasAgg) for (const [name, agg] of Object.entries(payload.rasAgg)) {
-      const id = ensure(name);
-      next.aggregates[id] = agg;
-      if (typeof agg.ras === "number") {
-        next.history[id] = next.history[id] || {
-          ras: {},
-          created: {}
-        };
-        next.history[id].ras = {
-          ...next.history[id].ras,
-          [month]: Math.round(agg.ras)
-        };
-      }
-      rasCount++;
-    }
-    if (payload.velocities) for (const [name, v] of Object.entries(payload.velocities)) {
-      next.velocities[ensure(name)] = v;
-      velCount++;
-    }
-    if (!next.settings.asOf || month > next.settings.asOf) next.settings = {
-      ...next.settings,
-      asOf: month
-    };
-    next.__lastImport = {
-      kind: "rasAgg",
-      count: rasCount,
-      velCount,
-      month
     };
     return next;
   }
@@ -4602,30 +4522,9 @@ function Overview({
           raw: false,
           defval: ""
         }).map(row => (row || []).map(c => c == null ? "" : String(c)));
-        // 0) Historical Adoption-Score workbook (monthly RAS sheets + Summary Staffing).
-        const isHistory = wb.SheetNames.some(n => /summary \(staffing\)/i.test(n)) && wb.SheetNames.some(n => /^RAS \(/i.test(n));
-        // 1) Authoritative tabs: RAS drives the score, Ops reporting drives velocity.
-        const rasSheet = wb.SheetNames.find(n => /do not edit\s*-\s*ras$/i.test(n.trim()));
-        const opsSheet = wb.SheetNames.find(n => /do not edit\s*-\s*ops/i.test(n.trim()));
-        if (isHistory) {
-          flash("Reading history…");
-          onImport(parseHistoryWorkbook(wb, XLSX));
-        } else if (rasSheet || opsSheet) {
-          const payload = {};
-          let err = null;
-          if (rasSheet) {
-            const pr = parseRASAggregates(toRows(rasSheet));
-            if (pr.error) err = pr.error;else Object.assign(payload, pr);
-          }
-          if (opsSheet) {
-            Object.assign(payload, parseOpsVelocities(toRows(opsSheet)));
-          }
-          if (!payload.rasAgg && !payload.velocities) {
-            flash(err || "No RAS or Ops reporting data found.");
-          } else onImport(payload);
-        } else {
-          // 2) Otherwise treat it as a recommendation tracker. Read the optional
-          // Projects sheet for the Active/Archived indicator, then the rec rows.
+        // Only the recommendation-tracker template format is supported.
+        // Read the optional Projects sheet for Active/Archived, then the rec rows.
+        {
           const projSheet = wb.SheetNames.find(n => /^projects?$/i.test(n.trim()));
           const projectStates = projSheet ? parseProjectsSheet(toRows(projSheet)) : null;
           let rows = null;
@@ -5761,104 +5660,6 @@ function parseTrackerRows(rows) {
   };
 }
 
-// Parse the "DO NOT EDIT - RAS" pivot tab into per-project aggregates that drive
-// the RAS score directly. Rows are arrays of cell strings. Columns are located
-// by header name so the exact pivot layout can shift without breaking.
-function parseRASAggregates(rows) {
-  const norm = s => String(s == null ? "" : s).trim().toLowerCase().replace(/\s+/g, " ");
-  const num = v => {
-    const n = parseFloat(String(v).replace(/[, ]/g, ""));
-    return isNaN(n) ? 0 : n;
-  };
-  // Header row = the one whose first cell is "row labels" and which contains "ras score".
-  let hi = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i] || [];
-    if (norm(r[0]) === "row labels" && r.some(c => norm(c) === "ras score")) {
-      hi = i;
-      break;
-    }
-  }
-  if (hi < 0) return {
-    rasAgg: {},
-    error: "No RAS pivot found in this workbook."
-  };
-  const header = rows[hi];
-  const findCol = target => header.findIndex(c => norm(c) === target);
-  const ci = {
-    high: findCol("high"),
-    medium: findCol("medium"),
-    low: findCol("low"),
-    highAdopted: findCol("high adopted"),
-    medAdopted: findCol("medium adopted"),
-    lowAdopted: findCol("low adopted"),
-    committed: findCol("committed"),
-    ras: findCol("ras score")
-  };
-  if (ci.ras < 0 || ci.high < 0) return {
-    rasAgg: {},
-    error: "RAS tab header is missing expected columns (High / RAS score)."
-  };
-  const get = (row, idx) => idx >= 0 ? row[idx] : "";
-  const out = {};
-  let seen = 0;
-  for (let r = hi + 1; r < rows.length; r++) {
-    const name = (rows[r]?.[0] || "").trim();
-    const key = name.toLowerCase();
-    if (!name) {
-      if (seen) break;else continue;
-    }
-    if (key === "grand total") break;
-    const row = rows[r];
-    out[name] = {
-      highTotal: num(get(row, ci.high)),
-      medTotal: num(get(row, ci.medium)),
-      lowTotal: num(get(row, ci.low)),
-      highAdopted: num(get(row, ci.highAdopted)),
-      medAdopted: num(get(row, ci.medAdopted)),
-      lowAdopted: num(get(row, ci.lowAdopted)),
-      committed: num(get(row, ci.committed)),
-      ras: num(get(row, ci.ras))
-    };
-    seen++;
-  }
-  return {
-    rasAgg: out
-  };
-}
-
-// Parse the "DO NOT EDIT - Ops reporting" tab for each project's authoritative
-// 3-month velocity (the "3mth" column of the monthly-creation pivot).
-function parseOpsVelocities(rows) {
-  const norm = s => String(s == null ? "" : s).trim().toLowerCase().replace(/\s+/g, " ");
-  const num = v => {
-    const n = parseFloat(String(v).replace(/[, ]/g, ""));
-    return isNaN(n) ? null : n;
-  };
-  let hi = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i] || [];
-    if (norm(r[0]) === "row labels" && r.some(c => norm(c) === "3mth")) {
-      hi = i;
-      break;
-    }
-  }
-  if (hi < 0) return {
-    velocities: {}
-  };
-  const vi = rows[hi].findIndex(c => norm(c) === "3mth");
-  const out = {};
-  for (let r = hi + 1; r < rows.length; r++) {
-    const name = (rows[r]?.[0] || "").trim();
-    if (!name || name.toLowerCase() === "grand total") break;
-    const v = num(rows[r][vi]);
-    if (v != null) out[name] = v;
-  }
-  return {
-    velocities: out
-  };
-}
-
 // Parse a template "Projects" sheet. Returns each project's name and whether it
 // is Active or Archived, so teams can retire a product without losing history.
 function parseProjectsSheet(rows) {
@@ -5876,99 +5677,6 @@ function parseProjectsSheet(rows) {
     out[name] = !/^archiv/.test(st); // anything not "archived" counts as active
   }
   return Object.keys(out).length ? out : null;
-}
-
-// Parse the historical Adoption-Score workbook: monthly "RAS (Mon'YY)" sheets
-// for RAS-by-month, and "Summary (Staffing)" for the investment-status history.
-function parseHistoryWorkbook(wb, XLSX) {
-  const MON = {
-    jan: 1,
-    feb: 2,
-    mar: 3,
-    apr: 4,
-    may: 5,
-    jun: 6,
-    jul: 7,
-    aug: 8,
-    sep: 9,
-    oct: 10,
-    nov: 11,
-    dec: 12
-  };
-  const norm = s => String(s == null ? "" : s).trim();
-  const toRows = ws => XLSX.utils.sheet_to_json(ws, {
-    header: 1,
-    raw: false,
-    defval: ""
-  }).map(r => (r || []).map(c => c == null ? "" : String(c)));
-  const stepBack = ym => {
-    let [y, m] = ym.split("-").map(Number);
-    m--;
-    if (m < 1) {
-      m = 12;
-      y--;
-    }
-    return `${y}-${String(m).padStart(2, "0")}`;
-  };
-
-  // ── RAS history from monthly sheets (processed newest→oldest) ──
-  const rasHistory = {};
-  const rasSheets = wb.SheetNames.filter(n => /^RAS \(/i.test(n));
-  let prevYm = null;
-  for (const sheet of rasSheets) {
-    const mt = sheet.match(/RAS \(([A-Za-z]+)'?(\d{2})?\)/);
-    let ym = null;
-    if (mt && mt[2] && MON[mt[1].slice(0, 3).toLowerCase()]) ym = `20${mt[2]}-${String(MON[mt[1].slice(0, 3).toLowerCase()]).padStart(2, "0")}`;else if (prevYm) ym = stepBack(prevYm);
-    if (!ym) continue;
-    prevYm = ym;
-    const rows = toRows(wb.Sheets[sheet]);
-    if (!rows.length) continue;
-    const hdr = rows[0].map(h => norm(h).toLowerCase());
-    const pc = hdr.indexOf("project"),
-      rc = hdr.indexOf("ras");
-    if (pc < 0 || rc < 0) continue;
-    for (let i = 1; i < rows.length; i++) {
-      const name = norm(rows[i][pc]);
-      if (!name) continue;
-      const v = parseFloat(String(rows[i][rc]).replace(/[, ]/g, ""));
-      if (!isNaN(v)) (rasHistory[name] = rasHistory[name] || {})[ym] = Math.round(v * 10) / 10;
-    }
-  }
-  // Latest RAS month anchors the staffing columns.
-  const allYms = Object.values(rasHistory).flatMap(o => Object.keys(o));
-  const anchorYm = allYms.length ? allYms.sort().slice(-1)[0] : null;
-
-  // ── investment-status history from Summary (Staffing) ──
-  const statusHistory = {};
-  const staffName = wb.SheetNames.find(n => /summary \(staffing\)/i.test(n));
-  if (staffName && anchorYm) {
-    const rows = toRows(wb.Sheets[staffName]);
-    const hi = rows.findIndex(r => norm(r[0]).toLowerCase() === "project");
-    if (hi >= 0) {
-      const hdr = rows[hi];
-      const monthCols = [];
-      for (let c = 1; c < hdr.length; c++) if (MON[norm(hdr[c]).slice(0, 3).toLowerCase()]) monthCols.push(c);
-      const ymByCol = {};
-      let ym = anchorYm;
-      for (let k = monthCols.length - 1; k >= 0; k--) {
-        ymByCol[monthCols[k]] = ym;
-        ym = stepBack(ym);
-      }
-      for (let i = hi + 1; i < rows.length; i++) {
-        const name = norm(rows[i][0]);
-        if (!name) continue;
-        for (const c of monthCols) {
-          const v = norm(rows[i][c]).toUpperCase();
-          if (v === "CONTINUE" || v === "CAUTION" || v === "STOP") (statusHistory[name] = statusHistory[name] || {})[ymByCol[c]] = v;
-        }
-      }
-    }
-  }
-  return {
-    rasHistory,
-    statusHistory,
-    latestMonth: anchorYm
-  };
 }
 
 // ─── INVENTORY ──────────────────────────────────────────────────────────────────
