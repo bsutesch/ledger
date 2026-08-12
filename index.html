@@ -971,6 +971,9 @@ function emptyRec(projectId) {
     impact: "medium",
     status: "communicated",
     owner: "",
+    researcher2: "",
+    researcher3: "",
+    crossRef: "",
     doneDefinition: "",
     evidence: "",
     jira: "",
@@ -3496,12 +3499,16 @@ function mergeImport(state, payload) {
         impact: tr.impact || "medium",
         status: tr.status || "communicated",
         owner: tr.owner || "",
+        researcher2: tr.researcher2 || "",
+        researcher3: tr.researcher3 || "",
+        crossRef: tr.crossRef || "",
         doneDefinition: tr.doneDefinition || "",
         evidence: tr.evidence || "",
         jira: tr.jira || "",
         impactedTask: tr.impactedTask || "",
         isAI: !!tr.isAI,
         createdMonth: tr.createdMonth || ymNow(),
+        daysToFix: tr.daysToFix != null ? tr.daysToFix : null,
         trackerId: tr.id || ""
       };
       fields.statusMonth = tr.statusMonth || fields.createdMonth;
@@ -3637,13 +3644,17 @@ async function exportXLSX(state, projectData) {
       Impact: IMPACT_LABEL[r.impact] || r.impact,
       Status: STATUS_LABEL[r.status] || r.status,
       Owner: r.owner,
-      "Definition of Done": r.doneDefinition,
+      "Additional researcher 1 (optional)": r.researcher2 || "",
+      "Additional researcher 2 (optional)": r.researcher3 || "",
+      "Cross project reference (optional)": r.crossRef || "",
+      "Description / Comments": r.doneDefinition,
       Evidence: r.evidence,
       Jira: r.jira,
       "Impacted Task": r.impactedTask,
       "AI Recommendation": r.isAI ? "Yes" : "No",
       Created: r.createdMonth,
-      "Status Updated": r.statusMonth
+      "Status Updated": r.statusMonth,
+      "Time to Fix (days)": r.daysToFix != null ? r.daysToFix : ""
     };
   });
   const wsRecs = XLSX.utils.json_to_sheet(recsRows);
@@ -5586,7 +5597,10 @@ function parseTrackerRows(rows) {
     fixed: col(/date fixed/i),
     evidence: col(/evidence/i),
     jira: col(/jira/i),
-    researcher: col(/^researcher$|^owner$/i)
+    researcher: col(/^researcher$|^owner$/i),
+    researcher2: col(/additional researcher 1/i),
+    researcher3: col(/additional researcher 2/i),
+    crossRef: col(/cross project reference/i)
   };
   if (ci.project < 0 || ci.rec < 0) return {
     trackerRecs: [],
@@ -5620,6 +5634,22 @@ function parseTrackerRows(rows) {
     if (m2) return `${m2[1]}-${m2[2]}`;
     return null;
   };
+  // Full day-precision date, used to compute time-to-fix. Handles M/D/YYYY,
+  // YYYY-MM-DD, and common spreadsheet exports; returns a Date or null.
+  const fullDate = s => {
+    s = (s || "").trim();
+    if (!s) return null;
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) {
+      let y = +m[3];
+      if (y < 100) y += 2000;
+      return new Date(y, +m[1] - 1, +m[2]);
+    }
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
   const get = (row, idx) => idx >= 0 ? (row[idx] || "").trim() : "";
   const out = [];
   let excluded = 0;
@@ -5638,6 +5668,9 @@ function parseTrackerRows(rows) {
       continue;
     }
     const created = ym(get(row, ci.communicated)) || "2024-01";
+    const dComm = fullDate(get(row, ci.communicated));
+    const dFix = fullDate(get(row, ci.fixed));
+    const daysToFix = dComm && dFix && dFix >= dComm ? Math.round((dFix - dComm) / 86400000) : null;
     out.push({
       id: get(row, ci.id),
       project,
@@ -5645,13 +5678,17 @@ function parseTrackerRows(rows) {
       impact: PRIORITY_MAP[get(row, ci.priority).toLowerCase()] || "medium",
       status,
       owner: get(row, ci.researcher),
-      doneDefinition: get(row, ci.desc).replace(/\s+/g, " ").slice(0, 500),
+      researcher2: get(row, ci.researcher2),
+      researcher3: get(row, ci.researcher3),
+      crossRef: get(row, ci.crossRef),
+      doneDefinition: get(row, ci.desc).replace(/\s+/g, " ").slice(0, 800),
       evidence: get(row, ci.evidence),
       jira: get(row, ci.jira),
       impactedTask: get(row, ci.task),
       isAI: /^(yes|true)$/i.test(get(row, ci.ai)),
       createdMonth: created,
-      statusMonth: ym(get(row, ci.fixed)) || created
+      statusMonth: ym(get(row, ci.fixed)) || created,
+      daysToFix
     });
   }
   return {
@@ -6562,7 +6599,7 @@ function RecRow({
       fontWeight: 600
     }
   })), /*#__PURE__*/React.createElement("div", {
-    title: r.owner || "",
+    title: [r.owner, r.researcher2, r.researcher3].filter(Boolean).join(", "),
     style: {
       minWidth: 0,
       color: T.textMuted,
@@ -6571,7 +6608,7 @@ function RecRow({
       textOverflow: "ellipsis",
       whiteSpace: "nowrap"
     }
-  }, r.owner || "—"), readOnly ? /*#__PURE__*/React.createElement("span", null) : /*#__PURE__*/React.createElement("button", {
+  }, [r.owner, r.researcher2, r.researcher3].filter(Boolean).join(", ") || "—"), readOnly ? /*#__PURE__*/React.createElement("span", null) : /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       if (window.confirm(`Remove "${(r.title || "Untitled").slice(0, 60)}"? This cannot be undone.`)) onRemove(r.id);
     },
@@ -6600,7 +6637,7 @@ function RecRow({
     style: {
       color: T.textMuted
     }
-  }, "Done:"), " ", r.doneDefinition), r.owner && /*#__PURE__*/React.createElement("div", {
+  }, "Description / Comments:"), " ", r.doneDefinition), [r.owner, r.researcher2, r.researcher3].filter(Boolean).length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 6
     }
@@ -6608,7 +6645,23 @@ function RecRow({
     style: {
       color: T.textMuted
     }
-  }, "Owner:"), " ", r.owner), r.impactedTask && /*#__PURE__*/React.createElement("div", {
+  }, [r.researcher2, r.researcher3].filter(Boolean).length ? "Researchers:" : "Owner:"), " ", [r.owner, r.researcher2, r.researcher3].filter(Boolean).join(", ")), r.crossRef && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.textMuted
+    }
+  }, "Cross-project reference:"), " ", r.crossRef), r.daysToFix != null && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 6
+    }
+  }, /*#__PURE__*/React.createElement("b", {
+    style: {
+      color: T.textMuted
+    }
+  }, "Time to fix:"), " ", r.daysToFix, " day", r.daysToFix === 1 ? "" : "s"), r.impactedTask && /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 6
     }
@@ -6627,7 +6680,7 @@ function RecRow({
     style: {
       color: T.accentInk
     }
-  }, r.evidence) : r.evidence), !r.doneDefinition && !r.owner && !r.impactedTask && !r.evidence && /*#__PURE__*/React.createElement("span", {
+  }, r.evidence) : r.evidence), !r.doneDefinition && !r.owner && !r.researcher2 && !r.researcher3 && !r.crossRef && r.daysToFix == null && !r.impactedTask && !r.evidence && /*#__PURE__*/React.createElement("span", {
     style: {
       color: T.textDim
     }
@@ -6640,7 +6693,7 @@ function RecRow({
       background: T.bgSubtle
     }
   }, /*#__PURE__*/React.createElement(Field, {
-    label: "Definition of done"
+    label: "Description / Comments"
   }, /*#__PURE__*/React.createElement(TextArea, {
     value: r.doneDefinition,
     onChange: e => onUpdate(r.id, {
@@ -6659,6 +6712,27 @@ function RecRow({
     value: r.owner,
     onChange: e => onUpdate(r.id, {
       owner: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Additional researcher 1"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: r.researcher2 || "",
+    onChange: e => onUpdate(r.id, {
+      researcher2: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Additional researcher 2"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: r.researcher3 || "",
+    onChange: e => onUpdate(r.id, {
+      researcher3: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement(Field, {
+    label: "Cross-project reference"
+  }, /*#__PURE__*/React.createElement(TextInput, {
+    value: r.crossRef || "",
+    onChange: e => onUpdate(r.id, {
+      crossRef: e.target.value
     })
   })), /*#__PURE__*/React.createElement(Field, {
     label: "Impacted task"
