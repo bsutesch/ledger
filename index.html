@@ -1045,12 +1045,15 @@ function liveProject(projectId, recs, aggregates) {
 
 // Merge live current-month RAS into the historical ras series so trend/charts
 // reflect both back-data and present inventory.
-function rasSeries(projectId, recs, history, asOf, aggregates) {
+function rasSeries(projectId, recs, history, asOf, aggregates, active = true) {
   const series = {
     ...(history?.[projectId]?.ras || {})
   };
   const live = liveProject(projectId, recs, aggregates);
-  if (live.count > 0 && series[asOf] == null) series[asOf] = live.ras.ras;
+  // Only extend the series to the current month for active projects. Once a
+  // project is archived, data collection has stopped, so its trend line should
+  // end at its last recorded month instead of drawing flat across to "now".
+  if (active && live.count > 0 && series[asOf] == null) series[asOf] = live.ras.ras;
   return series;
 }
 
@@ -1858,7 +1861,7 @@ function RAS() {
     const win = windowMonths(asOf, state.settings.window);
     return state.projects.map(p => {
       const live = liveProject(p.id, state.recs, state.aggregates);
-      const ras = rasSeries(p.id, state.recs, state.history, asOf, state.aggregates);
+      const ras = rasSeries(p.id, state.recs, state.history, asOf, state.aggregates, p.active);
       const created = createdByMonth(p.id, state.recs, state.history);
       const sig = projectSignals({
         createdByMonth: created,
@@ -2410,6 +2413,8 @@ function RAS() {
   }) : view === "trends" ? /*#__PURE__*/React.createElement(Trends, {
     projects: projectData,
     portfolio: portfolioSeries,
+    voice: state.voiceProfile,
+    flash: flash,
     onOpen: setActiveProject
   }) : view === "matrix" ? /*#__PURE__*/React.createElement(Matrix, {
     projects: projectData,
@@ -7082,9 +7087,13 @@ function RecRow({
 function Trends({
   projects,
   portfolio,
-  onOpen
+  onOpen,
+  voice,
+  flash
 }) {
   const [selected, setSelected] = useState(() => projects.filter(p => p.active).slice(0, 5).map(p => p.id));
+  const [narrative, setNarrative] = useState("");
+  const [busy, setBusy] = useState(false);
   const palette = ["#00BCEB", "#0070D2", "#0D274D", "#399E20", "#FBAB2C", "#E3241B", "#1990FA", "#64748b"];
   const allMonths = portfolio.map(p => p.month);
   const chartDataRaw = allMonths.map((m, idx) => {
@@ -7101,6 +7110,43 @@ function Trends({
   const hasData = row => Object.keys(row).some(k => k !== "label" && row[k] != null);
   const firstIdx = chartDataRaw.findIndex(hasData);
   const chartData = firstIdx >= 0 ? chartDataRaw.slice(firstIdx) : chartDataRaw;
+  const genSummary = async () => {
+    setBusy(true);
+    try {
+      const chartMonths = chartData.map(r => r.label);
+      const span = chartMonths.length ? `${chartMonths[0]} to ${chartMonths[chartMonths.length - 1]}` : "the current window";
+      const sel = projects.filter(p => selected.includes(p.id));
+      const seriesLine = p => {
+        const vals = chartData.map(r => typeof r[p.id] === "number" ? r[p.id] : null).filter(v => v != null);
+        const first = vals.length ? vals[0] : null;
+        const last = vals.length ? vals[vals.length - 1] : null;
+        const net = first != null && last != null ? +(last - first).toFixed(1) : null;
+        const lo = vals.length ? Math.min(...vals) : null;
+        const hi = vals.length ? Math.max(...vals) : null;
+        return `${p.name}: start ${first ?? "n/a"}, latest ${last ?? "n/a"}, net ${net == null ? "n/a" : (net >= 0 ? "+" : "") + net}, range ${lo ?? "n/a"}-${hi ?? "n/a"}, 6-month trend ${p.signals.trend.direction} (${p.signals.trend.delta >= 0 ? "+" : ""}${p.signals.trend.delta}), current signal ${p.signals.overall}`;
+      };
+      const pvals = chartData.map(r => r.__portfolio).filter(v => v != null);
+      const pfirst = pvals.length ? pvals[0] : null;
+      const plast = pvals.length ? pvals[pvals.length - 1] : null;
+      const pnet = pfirst != null && plast != null ? +(plast - pfirst).toFixed(1) : null;
+      const lines = sel.map(seriesLine).join("\n");
+      const prompt = `You are analyzing Recommendation-Adoption Score (RAS) trends over ${span} for a UX research leader. Use ONLY the numbers below. Do not invent, re-round, or recompute any value.
+
+Portfolio RAS: start ${pfirst ?? "n/a"}, latest ${plast ?? "n/a"}, net ${pnet == null ? "n/a" : (pnet >= 0 ? "+" : "") + pnet}.
+
+Projects on the chart:
+${lines || "None selected."}
+
+Write 2 to 3 short paragraphs. First: the overall direction of the portfolio and what it means. Then: name the clearest climbers and decliners and say what likely drives each, noting that a dip right after new research is normal as fresh recommendations enter as communicated. Close with where to look next. Ground every claim in the numbers above and name specific projects. Do not state any number that is not listed above.
+
+VOICE RULES (follow exactly):
+${compressVoice(voice)}`;
+      setNarrative(await callClaude(prompt, 650));
+    } catch (e) {
+      flash("AI analysis failed: " + e.message);
+    }
+    setBusy(false);
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Eyebrow, {
     n: "01"
   }, "RAS over time"), /*#__PURE__*/React.createElement("p", {
@@ -7307,7 +7353,40 @@ function Trends({
         opacity: p.active ? 1 : 0.6
       }
     }, p.name);
-  }))));
+  }))), /*#__PURE__*/React.createElement(Eyebrow, {
+    n: "02"
+  }, "AI trend analysis"), /*#__PURE__*/React.createElement(Card, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: narrative ? 14 : 0,
+      gap: 12,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: T.textSecondary,
+      maxWidth: 560
+    }
+  }, "Read the charted trajectories as a written analysis in your voice — the direction of the portfolio, the clearest climbers and decliners, and where to look next. Scores are read from the chart, never recomputed."), aiAvailable() ? /*#__PURE__*/React.createElement(Btn, {
+    onClick: genSummary,
+    disabled: busy || selected.length === 0
+  }, busy ? "Analyzing…" : narrative ? "Regenerate" : "Analyze trends") : /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: T.textMuted,
+      fontStyle: "italic"
+    }
+  }, "Connect an AI model to enable analysis")), narrative && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      lineHeight: 1.65,
+      color: T.textBright,
+      whiteSpace: "pre-wrap"
+    }
+  }, narrative)));
 }
 
 // ─── INVESTMENT MATRIX ──────────────────────────────────────────────────────────
