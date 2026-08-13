@@ -1500,14 +1500,50 @@ function TextArea(props) {
 
 // ─── AI helper (narrative only — never scoring) ────────────────────────────────
 // AI integration seam. A host page can define window.LEDGER_AI to plug in any
-// model; when absent, the built-in Anthropic endpoint is used (works inside the
-// Claude sandbox). aiAvailable() gates every AI-enabled feature so the app
-// degrades gracefully when no model is reachable.
+// model. When Ledger runs as an artifact inside Claude.ai, the runtime services
+// calls to the Anthropic messages endpoint without an API key, so AI features
+// light up automatically there. The deployed build stays gated on a user-supplied
+// key. aiAvailable() gates every AI-enabled feature so the app degrades gracefully
+// when no model is reachable.
 function aiAvailable() {
   if (typeof window === "undefined") return false;
   if (window.__LEDGER_AI_KEY) return true; // user-supplied key
   if (window.LEDGER_AI) return window.LEDGER_AI.available !== false && typeof window.LEDGER_AI.callModel === "function";
+  if (window.__LEDGER_ARTIFACT_AI) return true; // running inside Claude.ai
   return false; // off by default in the public build
+}
+// One-time check for the Claude.ai artifact runtime: a keyless call to the
+// messages endpoint succeeds only when the runtime injects auth. In a normal
+// browser it is blocked, so this resolves false and AI stays key-gated. Cached
+// on window so it runs at most once per session.
+let __ledgerArtifactProbe = null;
+function probeArtifactAI() {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (window.__LEDGER_ARTIFACT_AI != null) return Promise.resolve(window.__LEDGER_ARTIFACT_AI);
+  if (__ledgerArtifactProbe) return __ledgerArtifactProbe;
+  __ledgerArtifactProbe = (async () => {
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          max_tokens: 1,
+          messages: [{
+            role: "user",
+            content: "hi"
+          }]
+        })
+      });
+      window.__LEDGER_ARTIFACT_AI = !!res.ok;
+    } catch (e) {
+      window.__LEDGER_ARTIFACT_AI = false;
+    }
+    return window.__LEDGER_ARTIFACT_AI;
+  })();
+  return __ledgerArtifactProbe;
 }
 async function callClaude(prompt, maxTokens = 700) {
   // 1) user-supplied Anthropic key (direct browser call)
@@ -1539,6 +1575,26 @@ async function callClaude(prompt, maxTokens = 700) {
       maxTokens
     });
     return typeof out === "string" ? out.trim() : String(out || "").trim();
+  }
+  // 3) Claude.ai artifact runtime — keyless; the runtime injects auth
+  if (window.__LEDGER_ARTIFACT_AI) {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: maxTokens,
+        messages: [{
+          role: "user",
+          content: prompt
+        }]
+      })
+    });
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const data = await res.json();
+    return (data.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
   }
   throw new Error("No AI model configured");
 }
@@ -1660,6 +1716,22 @@ function RAS() {
   useEffect(() => {
     window.__LEDGER_AI_KEY = state.ai && state.ai.enabled && state.ai.key ? state.ai.key.trim() : "";
   }, [state.ai]);
+
+  // When there is no user key or host proxy, check once whether the Claude.ai
+  // artifact runtime can service AI calls. If it can, flip local state so the AI
+  // features render. In a normal deployed browser this resolves false and nothing
+  // changes.
+  const [, setArtifactAI] = useState(false);
+  useEffect(() => {
+    if (window.__LEDGER_AI_KEY || window.LEDGER_AI) return;
+    let alive = true;
+    probeArtifactAI().then(ok => {
+      if (alive && ok) setArtifactAI(true);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Apply custom thresholds on every render so all downstream computations
   // (gradeFor, computeRAS, velocitySignal) use current settings.
@@ -7845,16 +7917,76 @@ function Insights({
   const [narrative, setNarrative] = useState("");
   const [busy, setBusy] = useState(false);
   const [scope, setScope] = useState("active"); // "active" | "all"
+  const [staleFilter, setStaleFilter] = useState("all"); // "all" | "active" | projectId
+  const [staleOpen, setStaleOpen] = useState(true);
+  const [timingFilter, setTimingFilter] = useState("all"); // "all" | "active" | projectId
+  // Options for the per-card project filters: all, active-only, then each project.
+  const projectFilterOptions = useMemo(() => [{
+    value: "all",
+    label: "All projects"
+  }, {
+    value: "active",
+    label: "Active projects"
+  }, ...[...projects].sort((x, y) => (x.name || "").localeCompare(y.name || "")).map(p => ({
+    value: p.id,
+    label: p.name
+  }))], [projects]);
+  const recsForFilter = filterVal => {
+    let set;
+    if (filterVal === "all") set = projects;else if (filterVal === "active") set = projects.filter(p => p.active);else set = projects.filter(p => p.id === filterVal);
+    const pids = new Set(set.map(p => p.id));
+    return recs.filter(r => pids.has(r.projectId));
+  };
   const a = useMemo(() => analyzePortfolio(scope === "active" ? projects.filter(p => p.active) : projects, recs), [projects, recs, scope]);
   const stale = useMemo(() => {
-    const inScope = scope === "active" ? projects.filter(p => p.active) : projects;
-    const pids = new Set(inScope.map(p => p.id));
-    const pname = Object.fromEntries(inScope.map(p => [p.id, p.name]));
-    return staleCommunicated(recs.filter(r => pids.has(r.projectId))).map(s => ({
+    const pname = Object.fromEntries(projects.map(p => [p.id, p.name]));
+    return staleCommunicated(recsForFilter(staleFilter)).map(s => ({
       ...s,
       project: pname[s.rec.projectId] || "\u2014"
     }));
-  }, [projects, recs, scope]);
+  }, [projects, recs, staleFilter]);
+  const hasAnyStale = useMemo(() => staleCommunicated(recs).length > 0, [recs]);
+  const hasAnyTiming = useMemo(() => recs.some(r => typeof r.daysToFix === "number" && r.daysToFix >= 0) || recs.some(r => r.status === "communicated"), [recs]);
+  const timing = useMemo(() => {
+    const scoped = recsForFilter(timingFilter);
+    const now = ymNow();
+    const fixDays = scoped.filter(r => typeof r.daysToFix === "number" && r.daysToFix >= 0).map(r => r.daysToFix);
+    const commMonths = scoped.filter(r => r.status === "communicated").map(r => monthsElapsed(r.statusMonth || r.createdMonth, now)).filter(m => m >= 0);
+    const median = arr => {
+      if (!arr.length) return null;
+      const s = [...arr].sort((x, y) => x - y);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2 * 10) / 10;
+    };
+    const avg = arr => arr.length ? Math.round(arr.reduce((x, y) => x + y, 0) / arr.length * 10) / 10 : null;
+    const bucket = (arr, edges) => {
+      const counts = new Array(edges.length + 1).fill(0);
+      arr.forEach(v => {
+        let i = 0;
+        while (i < edges.length && v >= edges[i]) i++;
+        counts[i]++;
+      });
+      return counts;
+    };
+    return {
+      fix: {
+        n: fixDays.length,
+        median: median(fixDays),
+        avg: avg(fixDays),
+        max: fixDays.length ? Math.max(...fixDays) : null,
+        buckets: bucket(fixDays, [30, 90, 180]),
+        bucketLabels: ["< 30d", "30–90d", "90–180d", "180d+"]
+      },
+      comm: {
+        n: commMonths.length,
+        median: median(commMonths),
+        avg: avg(commMonths),
+        max: commMonths.length ? Math.max(...commMonths) : null,
+        buckets: bucket(commMonths, [3, 6, 12]),
+        bucketLabels: ["< 3mo", "3–6mo", "6–12mo", "12mo+"]
+      }
+    };
+  }, [projects, recs, timingFilter]);
   const genNarrative = async () => {
     setBusy(true);
     try {
@@ -7946,7 +8078,7 @@ ${compressVoice(voice)}`;
       background: scope === val ? T.accentSoft : T.bgInput,
       color: scope === val ? T.accentInk : T.textMuted
     }
-  }, label))), stale.length > 0 && /*#__PURE__*/React.createElement(Card, {
+  }, label))), hasAnyStale && /*#__PURE__*/React.createElement(Card, {
     style: {
       marginBottom: 16,
       borderLeft: `3px solid ${T.warning}`
@@ -7957,10 +8089,26 @@ ${compressVoice(voice)}`;
       justifyContent: "space-between",
       alignItems: "center",
       gap: 12,
-      flexWrap: "wrap",
-      marginBottom: 4
+      flexWrap: "wrap"
     }
   }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setStaleOpen(o => !o),
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      cursor: "pointer",
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: T.textMuted,
+      width: 12,
+      flexShrink: 0
+    }
+  }, staleOpen ? "▾" : "▸"), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 14,
       fontWeight: 700,
@@ -7976,13 +8124,40 @@ ${compressVoice(voice)}`;
       borderRadius: 20
     }
   }, stale.length)), /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Select, {
+    value: staleFilter,
+    onChange: e => setStaleFilter(e.target.value),
+    options: projectFilterOptions,
+    style: {
+      height: 32,
+      fontSize: 12,
+      padding: "0 8px",
+      maxWidth: 200
+    }
+  }))), staleOpen && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: T.textMuted,
-      marginBottom: 10,
+      margin: "10px 0",
       lineHeight: 1.5
     }
-  }, "These recommendations have sat in communicated for a year or more. Confirm whether each was adopted, committed to, or should be closed, so the score reflects reality."), /*#__PURE__*/React.createElement("div", null, stale.slice(0, 12).map(({
+  }, "These recommendations have sat in communicated for a year or more. Confirm whether each was adopted, committed to, or should be closed, so the score reflects reality."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxHeight: 420,
+      overflowY: "auto"
+    }
+  }, stale.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textDim,
+      paddingTop: 9,
+      borderTop: `1px solid ${T.border}`
+    }
+  }, "Nothing needs a status update for this filter.") : stale.map(({
     rec,
     project,
     monthsStale
@@ -8024,14 +8199,154 @@ ${compressVoice(voice)}`;
       color: T.warning,
       fontFamily: T.mono
     }
-  }, monthsStale, " mo"))), stale.length > 12 && /*#__PURE__*/React.createElement("div", {
+  }, monthsStale, " mo")))))), hasAnyTiming && /*#__PURE__*/React.createElement(Card, {
     style: {
-      fontSize: 11.5,
-      color: T.textMuted,
-      paddingTop: 9,
-      borderTop: `1px solid ${T.border}`
+      marginBottom: 16
     }
-  }, "and ", stale.length - 12, " more."))), /*#__PURE__*/React.createElement(Card, {
+  }, /*#__PURE__*/React.createElement(ChartWrap, {
+    name: "delivery-timing"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 14,
+      fontWeight: 700,
+      color: T.textBright
+    }
+  }, "Delivery timing"), /*#__PURE__*/React.createElement(Select, {
+    value: timingFilter,
+    onChange: e => setTimingFilter(e.target.value),
+    options: projectFilterOptions,
+    style: {
+      height: 32,
+      fontSize: 12,
+      padding: "0 8px",
+      maxWidth: 200
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.textMuted,
+      marginBottom: 16
+    }
+  }, "How long recommendations take to fix once communicated, and how long the ones still open have been waiting."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+      gap: 20
+    }
+  }, [{
+    label: "Time to fix",
+    unit: "days",
+    empty: "No fixed recommendations with both dates yet.",
+    d: timing.fix,
+    color: T.success,
+    longest: "longest"
+  }, {
+    label: "Time in communicated",
+    unit: "mo",
+    empty: "Nothing sitting in communicated right now.",
+    d: timing.comm,
+    color: T.warning,
+    longest: "oldest"
+  }].map(col => /*#__PURE__*/React.createElement("div", {
+    key: col.label
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: T.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.3,
+      marginBottom: 8
+    }
+  }, col.label), col.d.n === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textDim,
+      padding: "6px 0"
+    }
+  }, col.empty) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "baseline",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 30,
+      fontWeight: 800,
+      color: T.textBright,
+      lineHeight: 1
+    }
+  }, col.d.median), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: T.textMuted
+    }
+  }, col.unit, " median")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: T.textMuted,
+      marginTop: 6
+    }
+  }, "avg ", col.d.avg, " ", col.unit, " · ", col.d.n, " ", col.label === "Time to fix" ? "fixed" : "open", " · ", col.longest, " ", col.d.max, " ", col.unit), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, col.d.buckets.map((n, i) => {
+    const pct = col.d.n ? Math.round(n / col.d.n * 100) : 0;
+    return /*#__PURE__*/React.createElement("div", {
+      key: i,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 58,
+        fontSize: 11,
+        color: T.textMuted,
+        flexShrink: 0,
+        fontFamily: T.mono
+      }
+    }, col.d.bucketLabels[i]), /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        height: 8,
+        borderRadius: 4,
+        background: T.bgInput,
+        overflow: "hidden"
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        width: `${pct}%`,
+        height: "100%",
+        background: col.color,
+        borderRadius: 4
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      style: {
+        width: 22,
+        textAlign: "right",
+        fontSize: 11,
+        color: T.textSecondary,
+        flexShrink: 0,
+        fontFamily: T.mono
+      }
+    }, n));
+  })))))))), /*#__PURE__*/React.createElement(Card, {
     style: {
       marginBottom: 16
     }
