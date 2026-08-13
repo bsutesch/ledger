@@ -2498,6 +2498,8 @@ const EXAMPLE_RECS = [{
   impact: "high",
   status: "adopted",
   owner: "Jordan Lee",
+  researcher2: "Priya Shah",
+  crossRef: "Account Signup",
   done: "Steps reduced from four to one",
   evidence: "https://example.com/study-1",
   jira: "TKT-1041",
@@ -4298,11 +4300,11 @@ function TemplateGuide({
       };
       XLSX.utils.book_append_sheet(wb, wsP, "Projects");
 
-      // — Recommendations sheet —
-      const recs = [["Recommendation ID", "Project", "Recommendation", "Impact", "Status", "Owner", "Done Definition", "Evidence", "Jira", "Impacted Task", "AI Recommendation", "Date Communicated", "Date Fixed"], ...EXAMPLE_RECS.map(r => [r.id, r.project, r.title, r.impact, r.status, r.owner, r.done, r.evidence, r.jira, r.task, r.ai, r.communicated, r.fixed])];
+      // — Recommendations sheet (columns match the shared tracker template) —
+      const recs = [["Project", "Recommendation ID", "Recommendation", "Impact", "Status", "Description / Comments", "Impacted Task", "AI Recommendation", "Date communicated", "Date fixed", "Evidence", "Jira", "Owner", "Additional researcher 1 (optional)", "Additional researcher 2 (optional)", "Cross project reference (optional)"], ...EXAMPLE_RECS.map(r => [r.project, r.id, r.title, r.impact, r.status, r.done, r.task, r.ai, r.communicated, r.fixed, r.evidence, r.jira, r.owner, r.researcher2 || "", r.researcher3 || "", r.crossRef || ""])];
       const wsR = XLSX.utils.aoa_to_sheet(recs);
       wsR["!cols"] = [{
-        wch: 18
+        wch: 22
       }, {
         wch: 18
       }, {
@@ -4310,15 +4312,9 @@ function TemplateGuide({
       }, {
         wch: 9
       }, {
-        wch: 14
-      }, {
-        wch: 14
+        wch: 16
       }, {
         wch: 40
-      }, {
-        wch: 28
-      }, {
-        wch: 12
       }, {
         wch: 26
       }, {
@@ -4327,6 +4323,18 @@ function TemplateGuide({
         wch: 18
       }, {
         wch: 12
+      }, {
+        wch: 28
+      }, {
+        wch: 12
+      }, {
+        wch: 16
+      }, {
+        wch: 26
+      }, {
+        wch: 26
+      }, {
+        wch: 26
       }];
       wsR["!autofilter"] = {
         ref: XLSX.utils.encode_range({
@@ -4336,14 +4344,14 @@ function TemplateGuide({
           },
           e: {
             r: recs.length - 1,
-            c: 12
+            c: 15
           }
         })
       };
       XLSX.utils.book_append_sheet(wb, wsR, "Recommendations");
 
       // — How to use sheet —
-      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. A specific person accountable for the decision. Feeds the Status-by-owner view."], ["Done Definition", "Optional. What 'done' looks like, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date Communicated", "Recommended. YYYY-MM. The month the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended. YYYY-MM. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
+      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. The single person accountable for the decision. Feeds the Status-by-owner view."], ["Description / Comments", "Optional. Extra context on the recommendation, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date communicated", "Recommended. YYYY-MM or M/D/YYYY. The date the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal, and the time to fix. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date fixed", "Recommended. YYYY-MM or M/D/YYYY. When the recommendation was adopted. Used with Date communicated to calculate time to fix, and to rebuild the trend line and 6-month movement."], ["Additional researcher 1 (optional)", "Optional. A second researcher who worked on the recommendation. Shown alongside the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional. A third researcher. Also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional. Other projects related to this one. Reference only."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
       const wsH = XLSX.utils.aoa_to_sheet(how);
       wsH["!cols"] = [{
         wch: 22
@@ -4488,7 +4496,7 @@ function TemplateGuide({
       color: T.textBright,
       fontWeight: 700
     }
-  }, "Notes"))), /*#__PURE__*/React.createElement("tbody", null, [["Project", "Required", "Exact word. The product or workstream name. Nothing imports without it."], ["Recommendation", "Required", "The column must contain the word \u201cRecommendation.\u201d This is the unit Ledger scores."], ["Status", "Recommended", "adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and pulls the score down."], ["Impact", "Recommended", "high, medium, or low. \u201cPriority\u201d also works. Missing values default to medium, so the score stops reflecting what mattered."], ["Owner", "Recommended", "The person accountable. \u201cResearcher\u201d also works. Leave it out and the Status-by-owner view has nothing to show."], ["Recommendation ID", "Recommended", "Any unique text. \u201cID\u201d also works. Without it a re-import duplicates rows instead of updating them."], ["Date Communicated", "Recommended", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. Without it velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended", "YYYY-MM or M/D/YYYY. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], ["AI Recommendation", "Recommended", "TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Done Definition", "Optional", "What \u201cdone\u201d looks like. \u201cDescription\u201d or \u201cComment\u201d also work. Reference only."], ["Evidence", "Optional", "A link to the study. Reference only."], ["Jira", "Optional", "A ticket reference. Reference only."], ["Impacted Task", "Optional", "The user task this recommendation affects. Reference only."]].map((r, i) => /*#__PURE__*/React.createElement("tr", {
+  }, "Notes"))), /*#__PURE__*/React.createElement("tbody", null, [["Project", "Required", "Exact word. The product or workstream name. Nothing imports without it."], ["Recommendation", "Required", "The column must contain the word \u201cRecommendation.\u201d This is the unit Ledger scores."], ["Status", "Recommended", "adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and pulls the score down."], ["Impact", "Recommended", "high, medium, or low. \u201cPriority\u201d also works. Missing values default to medium, so the score stops reflecting what mattered."], ["Owner", "Recommended", "The person accountable. \u201cResearcher\u201d also works. Leave it out and the Status-by-owner view has nothing to show."], ["Recommendation ID", "Recommended", "Any unique text. \u201cID\u201d also works. Without it a re-import duplicates rows instead of updating them."], ["Date Communicated", "Recommended", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. Without it velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended", "YYYY-MM or M/D/YYYY. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], ["AI Recommendation", "Recommended", "TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Description / Comments", "Optional", "Extra context on the recommendation. \u201cDescription\u201d or \u201cComment\u201d in the header also work. Reference only."], ["Evidence", "Optional", "A link to the study. Reference only."], ["Jira", "Optional", "A ticket reference. Reference only."], ["Impacted Task", "Optional", "The user task this recommendation affects. Reference only."], ["Additional researcher 1 (optional)", "Optional", "A second researcher, shown next to the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional", "A third researcher, also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional", "Other projects related to this one. Reference only."]].map((r, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
     style: {
       borderBottom: `1px solid ${T.border}`
