@@ -1057,6 +1057,25 @@ function rasSeries(projectId, recs, history, asOf, aggregates, active = true) {
   return series;
 }
 
+// ─── product roll-ups ─────────────────────────────────────────────────────────
+// A parent product's roll-up pools the LIVE aggregates of the parent and every
+// sub-project, then runs the standard RAS computation. Summing counts (not
+// averaging scores) keeps the roll-up exactly on-method no matter how many
+// recommendations each sub-project carries.
+const ROLLUP_AGG_KEYS = ["highTotal", "medTotal", "lowTotal", "highAdopted", "medAdopted", "lowAdopted", "committed", "communicated", "canceled", "rejected", "deferred", "total"];
+function poolAgg(members) {
+  const agg = {};
+  ROLLUP_AGG_KEYS.forEach(k => agg[k] = 0);
+  members.forEach(m => {
+    const a = m.live && m.live.agg || {};
+    ROLLUP_AGG_KEYS.forEach(k => agg[k] += a[k] || 0);
+  });
+  return agg;
+}
+function childrenOf(parentId, projects) {
+  return (projects || []).filter(p => p.parentId === parentId && p.id !== parentId);
+}
+
 // ─── theme (light) ────────────────────────────────────────────────────────────
 const LIGHT_TOKENS = {
   bg: "#F4F5F6",
@@ -2334,9 +2353,11 @@ function RAS() {
     }
   }, tp.label)))), activeProject ? /*#__PURE__*/React.createElement(ProjectDetail, {
     project: projectData.find(p => p.id === activeProject),
+    allProjects: projectData,
     allRecs: state.recs,
     voice: state.voiceProfile,
     onBack: () => setActiveProject(null),
+    onOpen: setActiveProject,
     onAddRec: addRec,
     onUpdateRec: updateRec,
     onRemoveRec: removeRec,
@@ -2505,7 +2526,19 @@ const EXAMPLE_PROJECTS = [{
   name: "Mobile Banking",
   status: "Active",
   owner: "Sam Patel",
-  notes: "iOS and Android apps. Strong but plateauing."
+  notes: "Parent product. Open it to see the roll-up of its iOS and Android sub-projects."
+}, {
+  name: "Mobile Banking: iOS",
+  status: "Active",
+  parent: "Mobile Banking",
+  owner: "Sam Patel",
+  notes: "iOS app. A sub-project of Mobile Banking."
+}, {
+  name: "Mobile Banking: Android",
+  status: "Active",
+  parent: "Mobile Banking",
+  owner: "Sam Patel",
+  notes: "Android app. A sub-project of Mobile Banking."
 }, {
   name: "Employee Dashboard",
   status: "Active",
@@ -3415,6 +3448,90 @@ const EXAMPLE_RECS = [{
   ai: "FALSE",
   communicated: "2025-11",
   fixed: ""
+}, {
+  id: "MBI-001",
+  project: "Mobile Banking: iOS",
+  title: "Add Face ID to the login screen",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Biometric login shipped",
+  evidence: "https://example.com/study-70",
+  jira: "MBI-201",
+  task: "Sign in",
+  ai: "FALSE",
+  communicated: "2025-01",
+  fixed: "2025-03"
+}, {
+  id: "MBI-002",
+  project: "Mobile Banking: iOS",
+  title: "Add a spending summary widget",
+  impact: "medium",
+  status: "committed",
+  owner: "Sam Patel",
+  done: "Scheduled for the next release",
+  evidence: "https://example.com/study-71",
+  jira: "MBI-208",
+  task: "Check balances",
+  ai: "FALSE",
+  communicated: "2025-03",
+  fixed: ""
+}, {
+  id: "MBI-003",
+  project: "Mobile Banking: iOS",
+  title: "Simplify the transfer confirmation",
+  impact: "medium",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Confirmation reduced to one screen",
+  evidence: "https://example.com/study-72",
+  jira: "MBI-214",
+  task: "Send a transfer",
+  ai: "FALSE",
+  communicated: "2025-04",
+  fixed: "2025-05"
+}, {
+  id: "MBA-001",
+  project: "Mobile Banking: Android",
+  title: "Support fingerprint login",
+  impact: "high",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Fingerprint login shipped",
+  evidence: "https://example.com/study-73",
+  jira: "MBA-301",
+  task: "Sign in",
+  ai: "FALSE",
+  communicated: "2025-02",
+  fixed: "2025-04"
+}, {
+  id: "MBA-002",
+  project: "Mobile Banking: Android",
+  title: "Add a home-screen balance widget",
+  impact: "medium",
+  status: "communicated",
+  owner: "Sam Patel",
+  done: "",
+  evidence: "https://example.com/study-74",
+  jira: "MBA-309",
+  task: "Check balances",
+  ai: "FALSE",
+  communicated: "2025-03",
+  fixed: ""
+}, {
+  id: "MBA-003",
+  project: "Mobile Banking: Android",
+  title: "Speed up the app cold start",
+  impact: "low",
+  status: "adopted",
+  owner: "Sam Patel",
+  done: "Cold start cut by half",
+  evidence: "https://example.com/study-75",
+  jira: "MBA-316",
+  task: "Open the app",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: "2025-06"
 }];
 function generateExampleData() {
   const s = emptyState();
@@ -3435,6 +3552,13 @@ function generateExampleData() {
       ras: {},
       created: {}
     };
+  }
+  // Link sub-projects to their parent so the demo shows a working roll-up.
+  for (const p of EXAMPLE_PROJECTS) {
+    if (p.parent && idByName[p.name] && idByName[p.parent]) {
+      const proj = s.projects.find(x => x.id === idByName[p.name]);
+      if (proj) proj.parentId = idByName[p.parent];
+    }
   }
   for (const r of EXAMPLE_RECS) {
     const id = idByName[r.project];
@@ -3632,10 +3756,12 @@ function mergeImport(state, payload) {
         added++;
       }
     }
-    // Apply the Projects sheet's Active/Archived indicator.
+    // Apply the Projects sheet's Active/Archived indicator and parent grouping.
     let archived = 0;
     if (payload.projectStates) {
-      for (const [name, isActive] of Object.entries(payload.projectStates)) {
+      // First pass: ensure every listed project exists and set its active state.
+      for (const [name, info] of Object.entries(payload.projectStates)) {
+        const isActive = typeof info === "object" ? info.active !== false : info !== false;
         let id = byName[name];
         if (!id) {
           id = uid();
@@ -3659,6 +3785,19 @@ function mergeImport(state, payload) {
           } : p);
         }
         if (!isActive) archived++;
+      }
+      // Second pass: now that all names resolve to ids, apply parent grouping.
+      for (const [name, info] of Object.entries(payload.projectStates)) {
+        const parentName = typeof info === "object" ? info.parent : "";
+        if (!parentName) continue;
+        const childId = byName[name];
+        const parentId = byName[parentName];
+        if (childId && parentId && childId !== parentId) {
+          next.projects = next.projects.map(p => p.id === childId ? {
+            ...p,
+            parentId
+          } : p);
+        }
       }
     }
     // Rebuild each project's monthly RAS trend from its recommendation dates so a
@@ -3791,6 +3930,7 @@ async function exportXLSX(state, projectData) {
   const projRows = projectData.map(p => ({
     Project: p.name,
     Active: p.active ? "Active" : "Inactive",
+    Parent: p.parentId ? projectData.find(x => x.id === p.parentId)?.name || "" : "",
     RAS: p.currentRas ?? "",
     Grade: p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
     "Total Recs": p.live.agg.total,
@@ -4362,12 +4502,14 @@ function TemplateGuide({
       const wb = XLSX.utils.book_new();
 
       // — Projects sheet: Status column drives Active vs Archived —
-      const projects = [["Project", "Status", "Team / Owner", "Notes"], ...EXAMPLE_PROJECTS.map(p => [p.name, p.status, p.owner, p.notes])];
+      const projects = [["Project", "Status", "Parent product", "Team / Owner", "Notes"], ...EXAMPLE_PROJECTS.map(p => [p.name, p.status, p.parent || "", p.owner, p.notes])];
       const wsP = XLSX.utils.aoa_to_sheet(projects);
       wsP["!cols"] = [{
         wch: 26
       }, {
         wch: 12
+      }, {
+        wch: 20
       }, {
         wch: 18
       }, {
@@ -4381,7 +4523,7 @@ function TemplateGuide({
           },
           e: {
             r: projects.length - 1,
-            c: 3
+            c: 4
           }
         })
       };
@@ -4438,7 +4580,7 @@ function TemplateGuide({
       XLSX.utils.book_append_sheet(wb, wsR, "Recommendations");
 
       // — How to use sheet —
-      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. The single person accountable for the decision. Feeds the Status-by-owner view."], ["Description / Comments", "Optional. Extra context on the recommendation, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date communicated", "Recommended. YYYY-MM or M/D/YYYY. The date the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal, and the time to fix. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date fixed", "Recommended. YYYY-MM or M/D/YYYY. When the recommendation was adopted. Used with Date communicated to calculate time to fix, and to rebuild the trend line and 6-month movement."], ["Additional researcher 1 (optional)", "Optional. A second researcher who worked on the recommendation. Shown alongside the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional. A third researcher. Also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional. Other projects related to this one. Reference only."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
+      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Parent product", 'Optional. To group sub-projects under one product for roll-up reporting, put the parent product\'s exact name here. Example: a row named "Circuit: Labs" with Parent product "Circuit". The parent\'s roll-up pools its sub-projects\' recommendations and scores them together. Leave blank for standalone products.'], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. The single person accountable for the decision. Feeds the Status-by-owner view."], ["Description / Comments", "Optional. Extra context on the recommendation, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date communicated", "Recommended. YYYY-MM or M/D/YYYY. The date the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal, and the time to fix. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date fixed", "Recommended. YYYY-MM or M/D/YYYY. When the recommendation was adopted. Used with Date communicated to calculate time to fix, and to rebuild the trend line and 6-month movement."], ["Additional researcher 1 (optional)", "Optional. A second researcher who worked on the recommendation. Shown alongside the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional. A third researcher. Also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional. Other projects related to this one. Reference only."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
       const wsH = XLSX.utils.aoa_to_sheet(how);
       wsH["!cols"] = [{
         wch: 22
@@ -4617,7 +4759,7 @@ function TemplateGuide({
       lineHeight: 1.55,
       margin: "0 0 4px"
     }
-  }, "If your workbook also has a sheet named \u201cProjects\u201d with a \u201cProject\u201d column and a \u201cStatus\u201d column (Active or Archived), Ledger reads that to set which products are active."), /*#__PURE__*/React.createElement("div", {
+  }, "If your workbook also has a sheet named \u201cProjects\u201d with a \u201cProject\u201d column and a \u201cStatus\u201d column (Active or Archived), Ledger reads that to set which products are active. Add a \u201cParent product\u201d column to group sub-projects under a parent for roll-up reporting \u2014 put the parent\u2019s exact name on each sub-project\u2019s row."), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
@@ -5954,21 +6096,28 @@ function parseTrackerRows(rows) {
   };
 }
 
-// Parse a template "Projects" sheet. Returns each project's name and whether it
-// is Active or Archived, so teams can retire a product without losing history.
+// Parse a template "Projects" sheet. Returns each project's active state and
+// optional parent product (for roll-up grouping), so teams can retire a product
+// without losing history and group sub-projects under a parent from the import.
 function parseProjectsSheet(rows) {
   const norm = s => String(s == null ? "" : s).trim();
   if (!rows.length) return null;
   const hdr = rows[0].map(h => norm(h).toLowerCase());
   const pc = hdr.indexOf("project");
   const sc = hdr.indexOf("status");
+  const parc = hdr.findIndex(h => /^parent/.test(h));
   if (pc < 0) return null;
   const out = {};
   for (let i = 1; i < rows.length; i++) {
     const name = norm(rows[i][pc]);
     if (!name) continue;
     const st = sc >= 0 ? norm(rows[i][sc]).toLowerCase() : "active";
-    out[name] = !/^archiv/.test(st); // anything not "archived" counts as active
+    const parent = parc >= 0 ? norm(rows[i][parc]) : "";
+    out[name] = {
+      active: !/^archiv/.test(st),
+      // anything not "archived" counts as active
+      parent: parent && parent.toLowerCase() !== name.toLowerCase() ? parent : ""
+    };
   }
   return Object.keys(out).length ? out : null;
 }
@@ -9372,9 +9521,11 @@ ${compressVoice(voice)}`;
 // ─── PROJECT DETAIL ─────────────────────────────────────────────────────────────
 function ProjectDetail({
   project,
+  allProjects,
   allRecs,
   voice,
   onBack,
+  onOpen,
   onAddRec,
   onUpdateRec,
   onRemoveRec,
@@ -9398,6 +9549,16 @@ function ProjectDetail({
     ras
   } = project.live;
   const s = project.signals;
+  // Product roll-up: if this project is a parent, pool it with its sub-projects.
+  const kids = childrenOf(project.id, allProjects);
+  const isParent = kids.length > 0;
+  const rollAgg = isParent ? poolAgg([project, ...kids]) : null;
+  const rollRas = isParent ? computeRAS(rollAgg) : null;
+  const parentProj = project.parentId ? (allProjects || []).find(p => p.id === project.parentId) : null;
+  // Eligible parents for the picker: active top-level products (no parent of
+  // their own), excluding this project. A product with sub-projects can't also
+  // be a sub-project, keeping the hierarchy one level deep.
+  const parentOptions = isParent ? [] : (allProjects || []).filter(p => p.id !== project.id && !p.parentId && childrenOf(p.id, allProjects).length >= 0);
   const data = project.window.map(m => ({
     label: ymLabel(m),
     ras: typeof project.rasByMonth[m] === "number" ? project.rasByMonth[m] : null
@@ -9509,7 +9670,29 @@ ${compressVoice(voice)}`;
       gap: 8,
       marginLeft: "auto"
     }
-  }, !readOnly && /*#__PURE__*/React.createElement(Btn, {
+  }, !readOnly && !isParent && /*#__PURE__*/React.createElement("select", {
+    value: project.parentId || "",
+    onChange: e => onUpdateProject(project.id, {
+      parentId: e.target.value || undefined
+    }),
+    title: "Group this product under a parent for roll-up reporting",
+    style: {
+      fontFamily: T.font,
+      fontSize: 12,
+      fontWeight: 600,
+      color: T.textSecondary,
+      background: T.bgCard,
+      border: `1px solid ${T.borderStrong}`,
+      borderRadius: 8,
+      padding: "5px 8px",
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "No parent"), parentOptions.map(p => /*#__PURE__*/React.createElement("option", {
+    key: p.id,
+    value: p.id
+  }, "Part of " + p.name))), !readOnly && /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     small: true,
     onClick: () => onUpdateProject(project.id, {
@@ -9519,7 +9702,146 @@ ${compressVoice(voice)}`;
     variant: "ghost",
     small: true,
     onClick: exportCard
-  }, "Export PNG"))), /*#__PURE__*/React.createElement("div", {
+  }, "Export PNG"))), isParent && /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 16,
+      flexWrap: "wrap",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      fontWeight: 700,
+      color: T.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: 6
+    }
+  }, "Roll-up · " + kids.length + " sub-project" + (kids.length === 1 ? "" : "s")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "baseline",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 40,
+      fontWeight: 700,
+      color: T.textBright,
+      lineHeight: 1
+    }
+  }, rollRas.ras), rollRas.grade && /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: "#fff",
+      background: rollRas.grade.color,
+      borderRadius: 6,
+      padding: "2px 9px"
+    }
+  }, rollRas.grade.grade)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textSecondary,
+      marginTop: 6,
+      maxWidth: 470,
+      lineHeight: 1.5
+    }
+  }, "Pooled from " + project.name + " and its sub-projects, computed from " + rollAgg.total + " recommendations. Sub-project scores are pooled, not averaged.")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 18
+    }
+  }, [["Adopted", rollAgg.highAdopted + rollAgg.medAdopted + rollAgg.lowAdopted], ["Committed", rollAgg.committed], ["Communicated", rollAgg.communicated]].map(([label, val]) => /*#__PURE__*/React.createElement("div", {
+    key: label,
+    style: {
+      textAlign: "right"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 700,
+      color: T.textBright
+    }
+  }, val), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      fontWeight: 600,
+      color: T.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.3
+    }
+  }, label))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderTop: `1px solid ${T.border}`,
+      paddingTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      fontWeight: 700,
+      color: T.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: 4
+    }
+  }, "Sub-projects"), kids.map(p => {
+    const pr = p.live && p.live.ras;
+    return /*#__PURE__*/React.createElement("div", {
+      key: p.id,
+      onClick: () => onOpen && onOpen(p.id),
+      style: {
+        display: "grid",
+        gridTemplateColumns: "1fr auto auto",
+        alignItems: "center",
+        gap: 12,
+        padding: "7px 4px",
+        borderRadius: 6,
+        cursor: "pointer"
+      },
+      onMouseEnter: e => e.currentTarget.style.background = T.bgSubtle,
+      onMouseLeave: e => e.currentTarget.style.background = "transparent"
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 13.5,
+        color: T.textBright,
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap"
+      }
+    }, p.name, p.active ? "" : " (archived)"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 15,
+        fontWeight: 700,
+        color: T.textBright,
+        minWidth: 46,
+        textAlign: "right"
+      }
+    }, p.currentRas == null ? "—" : p.currentRas), /*#__PURE__*/React.createElement("span", {
+      style: {
+        minWidth: 48,
+        textAlign: "right"
+      }
+    }, pr && pr.grade ? /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10.5,
+        fontWeight: 700,
+        color: pr.grade.color
+      }
+    }, pr.grade.grade) : /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 10.5,
+        color: T.textDim
+      }
+    }, "—")));
+  }))), /*#__PURE__*/React.createElement("div", {
     ref: cardRef,
     style: {
       display: "grid",
@@ -9546,7 +9868,16 @@ ${compressVoice(voice)}`;
       fontSize: 13,
       color: T.textMuted
     }
-  }, project.owner)), /*#__PURE__*/React.createElement("div", {
+  }, project.owner), parentProj && /*#__PURE__*/React.createElement("div", {
+    onClick: () => onOpen && onOpen(parentProj.id),
+    style: {
+      fontSize: 12,
+      fontWeight: 600,
+      color: T.accentInk,
+      cursor: "pointer",
+      marginTop: 3
+    }
+  }, "↑ Part of " + parentProj.name)), /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "right"
     }
