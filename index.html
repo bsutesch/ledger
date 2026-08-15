@@ -12006,6 +12006,97 @@ function RecHelper({
 
 // Stakeholder readout: a branded one-pager for the whole portfolio or a single
 // product. Every number is computed here; AI only writes the optional summary.
+// Deterministic inline SVG trend line for the readout. Static SVG so html2canvas
+// captures it cleanly on export, unlike an async chart container.
+function ReadoutTrend({
+  series,
+  color
+}) {
+  if (!series || series.length < 2) {
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: T.textDim,
+        padding: "6px 0 14px"
+      }
+    }, "Not enough history yet to chart a trend.");
+  }
+  const W = 760;
+  const H = 168;
+  const padL = 34;
+  const padR = 12;
+  const padT = 12;
+  const padB = 24;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const vals = series.map(s => s.ras);
+  let lo = Math.min(...vals);
+  let hi = Math.max(...vals);
+  lo = Math.max(0, Math.floor(lo - 5));
+  hi = Math.min(100, Math.ceil(hi + 5));
+  if (lo >= hi) {
+    lo = Math.max(0, lo - 1);
+    hi = Math.min(100, hi + 1);
+  }
+  const n = series.length;
+  const x = i => padL + plotW * i / (n - 1);
+  const y = v => padT + plotH * (1 - (v - lo) / (hi - lo));
+  const pts = series.map((s, i) => `${x(i).toFixed(1)},${y(s.ras).toFixed(1)}`);
+  const line = pts.join(" ");
+  const area = `${padL},${padT + plotH} ${line} ${x(n - 1).toFixed(1)},${padT + plotH}`;
+  const c = color || T.accentInk;
+  const last = series[n - 1];
+  return /*#__PURE__*/React.createElement("svg", {
+    viewBox: `0 0 ${W} ${H}`,
+    width: "100%",
+    style: {
+      display: "block",
+      overflow: "visible"
+    }
+  }, [lo, Math.round((lo + hi) / 2), hi].map((v, i) => /*#__PURE__*/React.createElement("g", {
+    key: i
+  }, /*#__PURE__*/React.createElement("line", {
+    x1: padL,
+    y1: y(v),
+    x2: W - padR,
+    y2: y(v),
+    stroke: T.border,
+    strokeWidth: "1"
+  }), /*#__PURE__*/React.createElement("text", {
+    x: padL - 6,
+    y: y(v) + 3,
+    textAnchor: "end",
+    fontSize: "10",
+    fill: T.textMuted
+  }, v))), /*#__PURE__*/React.createElement("polygon", {
+    points: area,
+    fill: c,
+    opacity: "0.1"
+  }), /*#__PURE__*/React.createElement("polyline", {
+    points: line,
+    fill: "none",
+    stroke: c,
+    strokeWidth: "2.5",
+    strokeLinejoin: "round"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: x(n - 1),
+    cy: y(last.ras),
+    r: "3.5",
+    fill: c
+  }), /*#__PURE__*/React.createElement("text", {
+    x: padL,
+    y: H - 6,
+    textAnchor: "start",
+    fontSize: "10",
+    fill: T.textMuted
+  }, series[0].label), /*#__PURE__*/React.createElement("text", {
+    x: W - padR,
+    y: H - 6,
+    textAnchor: "end",
+    fontSize: "10",
+    fill: T.textMuted
+  }, last.label));
+}
 function ReadoutModal({
   projects,
   recs,
@@ -12063,6 +12154,20 @@ function ReadoutModal({
       impact: r.impact
     }));
     const now = ymNow();
+    let series;
+    if (scope === "portfolio") {
+      series = (portfolio || []).filter(x => x.ras != null).map(x => ({
+        label: x.label,
+        ras: x.ras
+      }));
+    } else {
+      const p = inScope[0];
+      const rb = p && p.rasByMonth || {};
+      series = Object.keys(rb).filter(m => typeof rb[m] === "number").sort().map(m => ({
+        label: ymLabel(m),
+        ras: rb[m]
+      }));
+    }
     const stalled = scopeRecs.filter(r => r.status === "communicated" && (r.title || "").trim()).map(r => ({
       title: r.title,
       project: pname[r.projectId],
@@ -12081,6 +12186,7 @@ function ReadoutModal({
       adoptPct,
       wins,
       stalled,
+      series,
       scopeName: scope === "portfolio" ? "Portfolio" : pname[scope] || "Product"
     };
   }, [scope, projects, recs, portfolio, active]);
@@ -12330,7 +12436,23 @@ ${compressVoice(voice)}`;
       borderBottom: `1px solid ${T.border}`,
       marginBottom: 18
     }
-  }, scope === "portfolio" ? statBox("Products", data.products) : null, statBox("Recommendations", data.total), statBox("Adopted", data.adoptPct + "%"), statBox("Committed", data.committed), statBox("Awaiting movement", data.communicated)), narrative && /*#__PURE__*/React.createElement("div", {
+  }, scope === "portfolio" ? statBox("Products", data.products) : null, statBox("Recommendations", data.total), statBox("Adopted", data.adoptPct + "%"), statBox("Committed", data.committed), statBox("Awaiting movement", data.communicated)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 18
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10.5,
+      fontWeight: 700,
+      color: T.textMuted,
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+      marginBottom: 8
+    }
+  }, "RAS trend"), /*#__PURE__*/React.createElement(ReadoutTrend, {
+    series: data.series,
+    color: data.grade ? data.grade.color : T.accentInk
+  })), narrative && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 13.5,
       lineHeight: 1.6,
