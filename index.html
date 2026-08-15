@@ -8553,10 +8553,12 @@ function Insights({
       }
       setExportMsg("Building the file…");
       const XLSX = await loadXLSX();
-      const aoa = [["Project", "Recommendation ID", "Current wording", "Issues to fix", "Suggested wording"]];
+      const aoa = [["Project", "Recommendation ID", "Current wording", "Issues to fix", "How to fix", "Suggested wording"]];
       list.forEach(it => {
-        const issues = [...it.fails, ...it.warns].map(c => c.label).join("; ");
-        aoa.push([it.project, it.rec.trackerId || it.rec.id || "", it.rec.title || "", issues, cache[it.rec.id] && cache[it.rec.id].text || ""]);
+        const flagged = [...it.fails, ...it.warns];
+        const issues = flagged.map(c => c.label).join("; ");
+        const howto = flagged.map(c => c.tip).join(" ");
+        aoa.push([it.project, it.rec.trackerId || it.rec.id || "", it.rec.title || "", issues, howto, cache[it.rec.id] && cache[it.rec.id].text || ""]);
       });
       const ws = XLSX.utils.aoa_to_sheet(aoa);
       ws["!cols"] = [{
@@ -8564,11 +8566,13 @@ function Insights({
       }, {
         wch: 18
       }, {
-        wch: 60
+        wch: 55
       }, {
-        wch: 40
+        wch: 34
       }, {
-        wch: 60
+        wch: 55
+      }, {
+        wch: 55
       }];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Wording review");
@@ -9804,6 +9808,17 @@ ${compressVoice(voice)}`;
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
+      fontSize: 12.5,
+      color: T.textSecondary,
+      lineHeight: 1.5,
+      background: T.bgSubtle,
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      padding: "10px 12px",
+      marginBottom: 14
+    }
+  }, aiAvailable() ? "Flagging runs in your browser and never leaves this device. Suggest rewrite goes a step further and sends that recommendation's wording to Anthropic so Claude can draft a finished sentence. To keep recommendations fully private, turn AI off in Settings and Ledger shows structural guidance here instead — what to change and the pattern to follow — with nothing sent anywhere." : "AI is off, so nothing here leaves your browser. Each flagged item shows structural guidance, the specific fixes and the pattern to follow, and you write the final sentence. Turning AI on in Settings lets Claude draft a finished rewrite for you, which sends that recommendation's wording to Anthropic."), /*#__PURE__*/React.createElement("div", {
+    style: {
       display: "flex",
       gap: 6,
       flexWrap: "wrap",
@@ -9849,7 +9864,7 @@ ${compressVoice(voice)}`;
       color: T.textMuted,
       lineHeight: 1.4
     }
-  }, aiAvailable() ? "Suggest all fills a rewrite for every item below. Download saves a sheet you can edit offline." : "Downloads a sheet of the flagged items and their issues to fix in your own file.")), (() => {
+  }, aiAvailable() ? "Suggest all fills a rewrite for every item below. Download saves a sheet you can edit offline." : "Downloads a sheet of the flagged items, their issues, and how to fix each one, to work through in your own file.")), (() => {
     const list = wordFilter === "fix" ? wording.fix : wordFilter === "warn" ? wording.warn : [...wording.fix, ...wording.warn];
     if (!list.length) return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -9931,13 +9946,47 @@ ${compressVoice(voice)}`;
         small: true,
         onClick: () => suggestRewrite(it.rec),
         disabled: s.loading
-      }, s.loading ? "Writing…" : s.text ? "Regenerate" : "Suggest rewrite") : /*#__PURE__*/React.createElement("span", {
+      }, s.loading ? "Writing…" : s.text ? "Regenerate" : "Suggest rewrite") : /*#__PURE__*/React.createElement("div", {
+        style: {
+          background: T.bgSubtle,
+          border: `1px solid ${T.border}`,
+          borderRadius: 8,
+          padding: "10px 12px"
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: T.textMuted,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          marginBottom: 6
+        }
+      }, "How to fix"), it.checks.filter(c => c.state !== "pass").map((c, ci) => /*#__PURE__*/React.createElement("div", {
+        key: ci,
+        style: {
+          display: "flex",
+          gap: 7,
+          alignItems: "flex-start",
+          fontSize: 12.5,
+          color: T.textSecondary,
+          lineHeight: 1.45,
+          marginBottom: 4
+        }
+      }, /*#__PURE__*/React.createElement("span", {
+        style: {
+          color: c.state === "fail" ? T.danger : T.warning,
+          fontWeight: 700,
+          flex: "0 0 auto"
+        }
+      }, "•"), /*#__PURE__*/React.createElement("span", null, c.tip))), /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 11.5,
           color: T.textMuted,
-          fontStyle: "italic"
+          marginTop: 6,
+          lineHeight: 1.45
         }
-      }, "Connect an AI model to suggest a rewrite"), s.text && /*#__PURE__*/React.createElement("div", {
+      }, "Pattern: a strong verb, then the specific thing to change, then \u201cso that\u201d and who benefits.")), s.text && /*#__PURE__*/React.createElement("div", {
         style: {
           marginTop: 10,
           background: T.bgSubtle,
