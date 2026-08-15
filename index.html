@@ -2447,7 +2447,9 @@ function RAS() {
     recs: state.recs,
     voice: state.voiceProfile,
     flash: flash,
-    onOpen: setActiveProject
+    onOpen: setActiveProject,
+    onUpdateRec: updateRec,
+    readOnly: readOnly
   }) : view === "settings" ? /*#__PURE__*/React.createElement(Settings, {
     thresholds: state.settings.thresholds || DEFAULT_THRESHOLDS,
     onChange: t => setState(s => ({
@@ -2476,7 +2478,9 @@ function RAS() {
     recs: state.recs,
     voice: state.voiceProfile,
     flash: flash,
-    onOpen: setActiveProject
+    onOpen: setActiveProject,
+    onUpdateRec: updateRec,
+    readOnly: readOnly
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 56,
@@ -8320,7 +8324,9 @@ function Insights({
   recs,
   voice,
   flash,
-  onOpen
+  onOpen,
+  onUpdateRec,
+  readOnly
 }) {
   const [narrative, setNarrative] = useState("");
   const [busy, setBusy] = useState(false);
@@ -8328,6 +8334,62 @@ function Insights({
   const [staleFilter, setStaleFilter] = useState("all"); // "all" | "active" | projectId
   const [staleOpen, setStaleOpen] = useState(true);
   const [timingFilter, setTimingFilter] = useState("all"); // "all" | "active" | projectId
+  const [wordFilter, setWordFilter] = useState("fix"); // "fix" | "warn" | "flagged"
+  const [wordOpen, setWordOpen] = useState(true);
+  const [sugg, setSugg] = useState({}); // rec.id -> { loading, text }
+  // Deterministic wording review: run the built-in analyzeRecommendation over every
+  // recommendation and group them by severity. Anything with a failing check is an
+  // alert; warnings are softer "could be stronger" flags. No model is consulted here.
+  const wording = useMemo(() => {
+    const pname = Object.fromEntries(projects.map(p => [p.id, p.name]));
+    const items = recs.filter(r => (r.title || "").trim()).map(r => {
+      const res = analyzeRecommendation(r.title);
+      const fails = res.checks.filter(c => c.state === "fail");
+      const warns = res.checks.filter(c => c.state === "warn");
+      return {
+        rec: r,
+        project: pname[r.projectId] || "\u2014",
+        fails,
+        warns,
+        severity: fails.length ? "fail" : warns.length ? "warn" : "clean"
+      };
+    });
+    return {
+      total: items.length,
+      fix: items.filter(i => i.severity === "fail"),
+      warn: items.filter(i => i.severity === "warn"),
+      clean: items.filter(i => i.severity === "clean")
+    };
+  }, [projects, recs]);
+  const suggestRewrite = async rec => {
+    setSugg(m => ({
+      ...m,
+      [rec.id]: {
+        loading: true,
+        text: ""
+      }
+    }));
+    try {
+      const prompt = 'Rewrite this research recommendation as ONE active-voice sentence. Structure: a strong action verb, then the specific thing to change, then a "so that <who> <benefit>" clause that names who benefits. Do not use weak verbs (optimize, improve, streamline, enhance) or hedges (consider, explore). No preamble, no quotes. Return only the sentence.\n\nDraft: ' + rec.title + (voice ? "\n\nVOICE RULES (follow exactly):\n" + compressVoice(voice) : "");
+      const out = await callClaude(prompt, 200);
+      setSugg(m => ({
+        ...m,
+        [rec.id]: {
+          loading: false,
+          text: (out || "").trim()
+        }
+      }));
+    } catch (e) {
+      flash("Rewrite failed: " + e.message);
+      setSugg(m => ({
+        ...m,
+        [rec.id]: {
+          loading: false,
+          text: ""
+        }
+      }));
+    }
+  };
   // Options for the per-card project filters: all, active-only, then each project.
   const projectFilterOptions = useMemo(() => [{
     value: "all",
@@ -9515,7 +9577,198 @@ ${compressVoice(voice)}`;
       color: T.textBright,
       whiteSpace: "pre-wrap"
     }
-  }, narrative)));
+  }, narrative)), wording.total > 0 && /*#__PURE__*/React.createElement(Card, {
+    style: {
+      marginTop: 22
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: () => setWordOpen(v => !v),
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      gap: 12,
+      cursor: "pointer"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 15,
+      fontWeight: 700,
+      color: T.textBright,
+      marginBottom: 3
+    }
+  }, "Recommendation wording"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textSecondary,
+      lineHeight: 1.5
+    }
+  }, wording.clean.length + " of " + wording.total + " follow the standard · " + wording.fix.length + " need fixing · " + wording.warn.length + " could be stronger")), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      color: T.textMuted,
+      marginTop: 4
+    }
+  }, wordOpen ? "▲" : "▼")), wordOpen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      flexWrap: "wrap",
+      marginBottom: 14
+    }
+  }, [["fix", "Needs fixing", wording.fix.length, T.danger], ["warn", "Could be stronger", wording.warn.length, T.warning], ["flagged", "All flagged", wording.fix.length + wording.warn.length, T.textMuted]].map(([key, label, count, color]) => {
+    const on = wordFilter === key;
+    return /*#__PURE__*/React.createElement("button", {
+      key: key,
+      onClick: () => setWordFilter(key),
+      style: {
+        fontFamily: T.font,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: "pointer",
+        color: on ? "#fff" : color === T.textMuted ? T.textSecondary : color,
+        background: on ? color === T.textMuted ? T.textMuted : color : "transparent",
+        border: `1px solid ${on ? "transparent" : T.border}`,
+        padding: "5px 11px",
+        borderRadius: 20
+      }
+    }, label + " " + count);
+  })), (() => {
+    const list = wordFilter === "fix" ? wording.fix : wordFilter === "warn" ? wording.warn : [...wording.fix, ...wording.warn];
+    if (!list.length) return /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 13,
+        color: T.textMuted,
+        padding: "6px 2px"
+      }
+    }, "Nothing here — these recommendations follow the standard.");
+    return /*#__PURE__*/React.createElement("div", {
+      style: {
+        maxHeight: 460,
+        overflowY: "auto",
+        paddingRight: 4
+      }
+    }, list.map(it => {
+      const s = sugg[it.rec.id] || {};
+      const isFail = it.severity === "fail";
+      const chip = (label, color) => /*#__PURE__*/React.createElement("span", {
+        key: label,
+        style: {
+          fontSize: 10.5,
+          fontWeight: 600,
+          color: color,
+          background: `${color}18`,
+          border: `1px solid ${color}44`,
+          borderRadius: 5,
+          padding: "2px 7px"
+        }
+      }, label);
+      return /*#__PURE__*/React.createElement("div", {
+        key: it.rec.id,
+        style: {
+          border: `1px solid ${T.border}`,
+          borderLeft: `3px solid ${isFail ? T.danger : T.warning}`,
+          borderRadius: 8,
+          padding: "10px 12px",
+          marginBottom: 8
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        onClick: () => onOpen && onOpen(it.rec.projectId),
+        style: {
+          fontSize: 11,
+          fontWeight: 600,
+          color: T.accentInk,
+          cursor: "pointer",
+          marginBottom: 3
+        }
+      }, it.project), /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 13.5,
+          color: T.textBright,
+          lineHeight: 1.45,
+          marginBottom: 8
+        }
+      }, it.rec.title), /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          gap: 6,
+          flexWrap: "wrap",
+          marginBottom: 10
+        }
+      }, it.fails.map(c => chip(c.label, T.danger)), it.warns.map(c => chip(c.label, T.warning))), aiAvailable() ? /*#__PURE__*/React.createElement(Btn, {
+        variant: "ghost",
+        small: true,
+        onClick: () => suggestRewrite(it.rec),
+        disabled: s.loading
+      }, s.loading ? "Writing…" : s.text ? "Regenerate" : "Suggest rewrite") : /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 11.5,
+          color: T.textMuted,
+          fontStyle: "italic"
+        }
+      }, "Connect an AI model to suggest a rewrite"), s.text && /*#__PURE__*/React.createElement("div", {
+        style: {
+          marginTop: 10,
+          background: T.bgSubtle,
+          border: `1px solid ${T.border}`,
+          borderRadius: 8,
+          padding: "10px 12px"
+        }
+      }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 10.5,
+          fontWeight: 700,
+          color: T.textMuted,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+          marginBottom: 4
+        }
+      }, "Suggested wording"), /*#__PURE__*/React.createElement("div", {
+        style: {
+          fontSize: 13.5,
+          color: T.textBright,
+          lineHeight: 1.5,
+          marginBottom: 10
+        }
+      }, s.text), /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap"
+        }
+      }, !readOnly && /*#__PURE__*/React.createElement(Btn, {
+        small: true,
+        onClick: () => {
+          onUpdateRec(it.rec.id, {
+            title: s.text
+          });
+          flash("Recommendation wording updated.");
+        }
+      }, "Use this wording"), /*#__PURE__*/React.createElement(Btn, {
+        variant: "ghost",
+        small: true,
+        onClick: () => {
+          try {
+            navigator.clipboard.writeText(s.text);
+            flash("Copied.");
+          } catch (e) {
+            flash("Copy failed.");
+          }
+        }
+      }, "Copy"))));
+    }));
+  })(), readOnly && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      marginTop: 10,
+      lineHeight: 1.5
+    }
+  }, "Your data is imported from a spreadsheet, so suggestions are advisory — copy a rewrite back into your tracker to keep the spreadsheet as the source of truth."))));
 }
 
 // ─── PROJECT DETAIL ─────────────────────────────────────────────────────────────
