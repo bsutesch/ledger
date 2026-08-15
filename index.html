@@ -5990,7 +5990,14 @@ function parseTrackerRows(rows) {
   const ci = {
     project: col(/^project$/i),
     id: col(/^(id|recommendation id)$/i),
-    rec: col(/recommendation/i),
+    // The recommendation TEXT column. Prefer an exact "Recommendation" header;
+    // otherwise the first header that mentions recommendation but is not the ID
+    // column, so "Recommendation ID" (which sorts first) is never mistaken for it.
+    rec: (() => {
+      let i = header.findIndex(h => /^recommendation$/i.test(h));
+      if (i < 0) i = header.findIndex(h => /recommendation/i.test(h) && !/\bid\b/i.test(h));
+      return i;
+    })(),
     priority: col(/priority|^impact$/i),
     status: col(/^status$/i),
     desc: col(/description|comment|done definition/i),
@@ -8361,6 +8368,12 @@ function Insights({
       clean: items.filter(i => i.severity === "clean")
     };
   }, [projects, recs]);
+  const [exporting, setExporting] = useState(false);
+  const [exportMsg, setExportMsg] = useState("");
+  const genText = async rec => {
+    const prompt = 'Rewrite this research recommendation as ONE active-voice sentence. Structure: a strong action verb, then the specific thing to change, then a "so that <who> <benefit>" clause that names who benefits. Do not use weak verbs (optimize, improve, streamline, enhance) or hedges (consider, explore). No preamble, no quotes. Return only the sentence.\n\nDraft: ' + (rec.title || "") + (voice ? "\n\nVOICE RULES (follow exactly):\n" + compressVoice(voice) : "");
+    return ((await callClaude(prompt, 200)) || "").trim();
+  };
   const suggestRewrite = async rec => {
     setSugg(m => ({
       ...m,
@@ -8370,13 +8383,12 @@ function Insights({
       }
     }));
     try {
-      const prompt = 'Rewrite this research recommendation as ONE active-voice sentence. Structure: a strong action verb, then the specific thing to change, then a "so that <who> <benefit>" clause that names who benefits. Do not use weak verbs (optimize, improve, streamline, enhance) or hedges (consider, explore). No preamble, no quotes. Return only the sentence.\n\nDraft: ' + rec.title + (voice ? "\n\nVOICE RULES (follow exactly):\n" + compressVoice(voice) : "");
-      const out = await callClaude(prompt, 200);
+      const out = await genText(rec);
       setSugg(m => ({
         ...m,
         [rec.id]: {
           loading: false,
-          text: (out || "").trim()
+          text: out
         }
       }));
     } catch (e) {
@@ -8389,6 +8401,69 @@ function Insights({
         }
       }));
     }
+  };
+  // Download the full review as a spreadsheet so a team can make the edits offline
+  // and keep their own file as the source of truth. When AI is available it fills a
+  // Suggested wording column for every flagged item; without it, the file still
+  // carries the current wording and the specific issues to fix by hand.
+  const downloadReview = async withAI => {
+    const list = [...wording.fix, ...wording.warn];
+    if (!list.length) {
+      flash("Nothing flagged to download.");
+      return;
+    }
+    setExporting(true);
+    const cache = {
+      ...sugg
+    };
+    try {
+      if (withAI && aiAvailable()) {
+        for (let i = 0; i < list.length; i++) {
+          const rec = list[i].rec;
+          if (!cache[rec.id] || !cache[rec.id].text) {
+            setExportMsg(`Writing suggestions… ${i + 1} of ${list.length}`);
+            try {
+              const txt = await genText(rec);
+              cache[rec.id] = {
+                loading: false,
+                text: txt
+              };
+            } catch (e) {
+              cache[rec.id] = {
+                loading: false,
+                text: ""
+              };
+            }
+          }
+        }
+        setSugg(cache);
+      }
+      setExportMsg("Building the file…");
+      const aoa = [["Project", "Recommendation ID", "Current wording", "Issues to fix", "Suggested wording"]];
+      list.forEach(it => {
+        const issues = [...it.fails, ...it.warns].map(c => c.label).join("; ");
+        aoa.push([it.project, it.rec.trackerId || it.rec.id || "", it.rec.title || "", issues, cache[it.rec.id] && cache[it.rec.id].text || ""]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = [{
+        wch: 22
+      }, {
+        wch: 18
+      }, {
+        wch: 60
+      }, {
+        wch: 40
+      }, {
+        wch: 60
+      }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Wording review");
+      XLSX.writeFile(wb, `ledger-wording-review-${ymNow()}.xlsx`);
+    } catch (e) {
+      flash("Download failed: " + e.message);
+    }
+    setExporting(false);
+    setExportMsg("");
   };
   // Options for the per-card project filters: all, active-only, then each project.
   const projectFilterOptions = useMemo(() => [{
@@ -9637,7 +9712,25 @@ ${compressVoice(voice)}`;
         borderRadius: 20
       }
     }, label + " " + count);
-  })), (() => {
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 14
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: () => downloadReview(aiAvailable()),
+    disabled: exporting || wording.fix.length + wording.warn.length === 0
+  }, exporting ? exportMsg || "Preparing…" : aiAvailable() ? "Download all with suggestions (xlsx)" : "Download review (xlsx)"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11.5,
+      color: T.textMuted,
+      lineHeight: 1.4
+    }
+  }, aiAvailable() ? "Writes a rewrite for every flagged item, then downloads a sheet you can edit offline." : "Downloads a sheet of the flagged items and their issues to fix in your own file.")), (() => {
     const list = wordFilter === "fix" ? wording.fix : wordFilter === "warn" ? wording.warn : [...wording.fix, ...wording.warn];
     if (!list.length) return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -9677,22 +9770,36 @@ ${compressVoice(voice)}`;
           marginBottom: 8
         }
       }, /*#__PURE__*/React.createElement("div", {
+        style: {
+          display: "flex",
+          alignItems: "baseline",
+          gap: 8,
+          flexWrap: "wrap",
+          marginBottom: 4
+        }
+      }, /*#__PURE__*/React.createElement("span", {
         onClick: () => onOpen && onOpen(it.rec.projectId),
         style: {
           fontSize: 11,
           fontWeight: 600,
           color: T.accentInk,
-          cursor: "pointer",
-          marginBottom: 3
+          cursor: "pointer"
         }
-      }, it.project), /*#__PURE__*/React.createElement("div", {
+      }, it.project), (it.rec.trackerId || it.rec.id) && /*#__PURE__*/React.createElement("span", {
+        style: {
+          fontSize: 10.5,
+          fontFamily: T.mono,
+          color: T.textMuted
+        }
+      }, it.rec.trackerId || it.rec.id)), /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 13.5,
-          color: T.textBright,
+          color: it.rec.title ? T.textBright : T.textMuted,
+          fontStyle: it.rec.title ? "normal" : "italic",
           lineHeight: 1.45,
           marginBottom: 8
         }
-      }, it.rec.title), /*#__PURE__*/React.createElement("div", {
+      }, it.rec.title || "No recommendation text"), /*#__PURE__*/React.createElement("div", {
         style: {
           display: "flex",
           gap: 6,
@@ -11658,7 +11765,7 @@ function RecHelper({
 function PrivacyModal({
   onClose
 }) {
-  const paras = ["Nowhere. Ledger runs entirely in your browser, so everything you enter stays on this device.", "Projects, recommendations, and statuses are saved in this browser's local storage. There is no server, no account, and no sign-in, which means nothing is uploaded and nothing is kept anywhere you cannot reach.", "Every number is computed the same way. The Recommendation-Adoption Score and each signal are calculated here from the published method, not pulled from a service.", "Because the data lives in this browser, it belongs to this browser on this device. Clearing your browser storage clears it, so Export saves a JSON backup and Import loads it back or moves it to another machine.", "You do not have to keep anything in Ledger at all. You can manage your recommendations in your own spreadsheet, import it here, and use Ledger only to read and visualize the numbers. When you import a spreadsheet, Ledger treats it as the source of truth and leaves it read-only, so your file stays the record and Ledger is just the view over it.", "AI only writes the summaries. When you use them, the text needed for that summary is the only thing sent to the model, and none of it is stored."];
+  const paras = ["Nowhere. Ledger runs entirely in your browser, so everything you enter stays on this device.", "Projects, recommendations, and statuses are saved in this browser's local storage. There is no server, no account, and no sign-in, which means nothing is uploaded and nothing is kept anywhere you cannot reach.", "Every number is computed the same way. The Recommendation-Adoption Score and each signal are calculated here from the published method, not pulled from a service.", "Because the data lives in this browser, it belongs to this browser on this device. Clearing your browser storage clears it, so Export saves a JSON backup and Import loads it back or moves it to another machine.", "You do not have to keep anything in Ledger at all. You can manage your recommendations in your own spreadsheet, import it here, and use Ledger only to read and visualize the numbers. When you import a spreadsheet, Ledger treats it as the source of truth and leaves it read-only, so your file stays the record and Ledger is just the view over it.", "AI features are optional and stay off until you use one. When you press an AI button, whether a summary, a trend readout, or a wording rewrite, Ledger sends only the specific text that feature needs. That is the wording of the recommendations involved, the project names, and the numbers already computed here.", "Ledger never sends your whole dataset, and nothing goes to the model unless you start one of these actions. Anthropic does not use this text to train its models. The scores themselves are always computed in your browser, never by the AI."];
   return /*#__PURE__*/React.createElement("div", {
     onClick: onClose,
     style: {
