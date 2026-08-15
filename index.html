@@ -2050,10 +2050,10 @@ function RAS() {
     style: {
       maxWidth: 1180,
       margin: "0 auto",
-      padding: "12px 24px",
+      padding: "12px 20px",
       display: "flex",
       alignItems: "center",
-      gap: 18
+      gap: 12
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2085,7 +2085,7 @@ function RAS() {
     title: "What does this tool do?",
     className: "pr-help-pill",
     style: {
-      padding: "5px 13px",
+      padding: "4px 11px",
       borderRadius: 20,
       border: "none",
       background: T.accent,
@@ -2100,8 +2100,8 @@ function RAS() {
   }, "What does this tool do?")), /*#__PURE__*/React.createElement("nav", {
     style: {
       display: "flex",
-      gap: 4,
-      flexWrap: "wrap"
+      gap: 2,
+      flexWrap: "nowrap"
     }
   }, NAV.map(n => /*#__PURE__*/React.createElement("button", {
     key: n.id,
@@ -2111,12 +2111,13 @@ function RAS() {
     },
     style: {
       fontFamily: T.font,
-      fontSize: 13,
+      fontSize: 12.5,
       fontWeight: 600,
       cursor: "pointer",
-      padding: "6px 12px",
+      padding: "6px 8px",
       borderRadius: 7,
       border: "none",
+      whiteSpace: "nowrap",
       background: view === n.id ? T.accentSoft : "transparent",
       color: view === n.id ? T.accentInk : T.textMuted
     }
@@ -2125,7 +2126,8 @@ function RAS() {
       marginLeft: "auto",
       display: "flex",
       alignItems: "center",
-      gap: 8
+      gap: 6,
+      flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setState(s => ({
@@ -2139,12 +2141,13 @@ function RAS() {
     style: {
       display: "flex",
       alignItems: "center",
-      gap: 9,
+      gap: 6,
       background: "transparent",
       border: "none",
       cursor: "pointer",
       padding: "4px 2px",
-      fontFamily: T.font
+      fontFamily: T.font,
+      flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("svg", {
     width: "15",
@@ -2189,35 +2192,38 @@ function RAS() {
     }
   })), /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: 13,
+      fontSize: 12.5,
       fontWeight: 600,
-      color: T.textSecondary
+      color: T.textSecondary,
+      whiteSpace: "nowrap"
     }
   }, "Dark mode")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowTemplate(true),
     style: {
       fontFamily: T.font,
-      fontSize: 12,
+      fontSize: 11.5,
       fontWeight: 600,
       cursor: "pointer",
       color: T.textMuted,
       background: "transparent",
       border: `1px solid ${T.border}`,
-      padding: "5px 10px",
-      borderRadius: 7
+      padding: "5px 9px",
+      borderRadius: 7,
+      whiteSpace: "nowrap"
     }
   }, "Import guide"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowScoring(true),
     style: {
       fontFamily: T.font,
-      fontSize: 12,
+      fontSize: 11.5,
       fontWeight: 600,
       cursor: "pointer",
       color: T.textMuted,
       background: "transparent",
       border: `1px solid ${T.border}`,
-      padding: "5px 10px",
-      borderRadius: 7
+      padding: "5px 9px",
+      borderRadius: 7,
+      whiteSpace: "nowrap"
     }
   }, "How scoring works")))), /*#__PURE__*/React.createElement("style", null, "@keyframes prHelpPulse { 0% { box-shadow: 0 0 0 0 rgba(0,188,235,0.55); } 70% { box-shadow: 0 0 0 8px rgba(0,188,235,0); } 100% { box-shadow: 0 0 0 0 rgba(0,188,235,0); } } .pr-help-pill { animation: prHelpPulse 2.2s ease-out infinite; transition: transform .15s ease, filter .15s ease; } .pr-help-pill:hover { transform: translateY(-1px); filter: brightness(1.05); animation-play-state: paused; } @media (prefers-reduced-motion: reduce) { .pr-help-pill { animation: none; } }"), /*#__PURE__*/React.createElement("div", {
     style: {
