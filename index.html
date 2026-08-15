@@ -1665,7 +1665,7 @@ async function callClaude(prompt, maxTokens = 700) {
 // and a "so that <who> <benefit>" clause that names who benefits. Every check below
 // is pure string logic. Where AI is enabled it only redrafts wording; it never scores.
 const REC_STRONG_VERBS = ["add", "remove", "replace", "merge", "move", "rename", "default", "prefill", "pre-fill", "surface", "consolidate", "reorder", "split", "group", "show", "hide", "enable", "disable", "automate", "flag", "link", "label", "reduce", "combine", "separate", "reposition", "autosave", "validate", "sort", "filter", "collapse", "expand", "pin", "require", "allow", "cache", "batch", "route", "trim", "cut", "shorten", "align", "attach", "embed", "persist"];
-const REC_WEAK_VERBS = ["optimize", "improve", "streamline", "enhance", "leverage", "utilize", "refine", "polish", "revamp", "revisit", "rework", "better", "fix", "modernize", "elevate", "boost"];
+const REC_WEAK_VERBS = ["optimize", "improve", "streamline", "enhance", "leverage", "utilize", "refine", "polish", "revamp", "revisit", "rework", "better", "modernize", "elevate", "boost"];
 const REC_HEDGE_STARTS = ["consider", "explore", "look into", "think about", "maybe", "perhaps", "we should", "try to", "try", "investigate", "evaluate", "assess", "review", "examine", "possibly"];
 const REC_VAGUE = ["things", "stuff", "the experience", "the ux", "the process", "user experience", "seamless", "intuitive", "user-friendly", "user friendly", "robust", "holistic"];
 // Verbs a benefit clause opens with when the subject has been dropped
@@ -8426,6 +8426,9 @@ function Insights({
       return {
         rec: r,
         project: pname[r.projectId] || "\u2014",
+        checks: res.checks,
+        pass: res.passCount,
+        total: res.total,
         fails,
         warns,
         severity: fails.length ? "fail" : warns.length ? "warn" : "clean"
@@ -8440,6 +8443,8 @@ function Insights({
   }, [projects, recs]);
   const [exporting, setExporting] = useState(false);
   const [exportMsg, setExportMsg] = useState("");
+  const [suggestingAll, setSuggestingAll] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState("");
   const genText = async rec => {
     const prompt = 'Rewrite this research recommendation as ONE active-voice sentence. Structure: a strong action verb, then the specific thing to change, then a "so that <who> <benefit>" clause that names who benefits. Do not use weak verbs (optimize, improve, streamline, enhance) or hedges (consider, explore). No preamble, no quotes. Return only the sentence.\n\nDraft: ' + (rec.title || "") + (voice ? "\n\nVOICE RULES (follow exactly):\n" + compressVoice(voice) : "");
     return ((await callClaude(prompt, 200)) || "").trim();
@@ -8472,7 +8477,45 @@ function Insights({
       }));
     }
   };
-  // Download the full review as a spreadsheet so a team can make the edits offline
+  const suggestAll = async () => {
+    const list = [...wording.fix, ...wording.warn].filter(it => !(sugg[it.rec.id] && sugg[it.rec.id].text));
+    if (!list.length) {
+      flash("Every flagged item already has a suggestion.");
+      return;
+    }
+    setSuggestingAll(true);
+    for (let i = 0; i < list.length; i++) {
+      const rec = list[i].rec;
+      setBulkMsg(`Writing ${i + 1} of ${list.length}…`);
+      setSugg(m => ({
+        ...m,
+        [rec.id]: {
+          loading: true,
+          text: ""
+        }
+      }));
+      try {
+        const txt = await genText(rec);
+        setSugg(m => ({
+          ...m,
+          [rec.id]: {
+            loading: false,
+            text: txt
+          }
+        }));
+      } catch (e) {
+        setSugg(m => ({
+          ...m,
+          [rec.id]: {
+            loading: false,
+            text: ""
+          }
+        }));
+      }
+    }
+    setSuggestingAll(false);
+    setBulkMsg("");
+  };
   // and keep their own file as the source of truth. When AI is available it fills a
   // Suggested wording column for every flagged item; without it, the file still
   // carries the current wording and the specific issues to fix by hand.
@@ -9791,17 +9834,22 @@ ${compressVoice(voice)}`;
       flexWrap: "wrap",
       marginBottom: 14
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, aiAvailable() && /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: suggestAll,
+    disabled: suggestingAll || exporting || wording.fix.length + wording.warn.length === 0
+  }, suggestingAll ? bulkMsg || "Writing…" : "Suggest rewrites for all"), /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
     small: true,
     onClick: () => downloadReview(aiAvailable()),
-    disabled: exporting || wording.fix.length + wording.warn.length === 0
+    disabled: exporting || suggestingAll || wording.fix.length + wording.warn.length === 0
   }, exporting ? exportMsg || "Preparing…" : aiAvailable() ? "Download all with suggestions (xlsx)" : "Download review (xlsx)"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11.5,
       color: T.textMuted,
       lineHeight: 1.4
     }
-  }, aiAvailable() ? "Writes a rewrite for every flagged item, then downloads a sheet you can edit offline." : "Downloads a sheet of the flagged items and their issues to fix in your own file.")), (() => {
+  }, aiAvailable() ? "Suggest all fills a rewrite for every item below. Download saves a sheet you can edit offline." : "Downloads a sheet of the flagged items and their issues to fix in your own file.")), (() => {
     const list = wordFilter === "fix" ? wording.fix : wordFilter === "warn" ? wording.warn : [...wording.fix, ...wording.warn];
     if (!list.length) return /*#__PURE__*/React.createElement("div", {
       style: {
@@ -9819,14 +9867,15 @@ ${compressVoice(voice)}`;
     }, list.map(it => {
       const s = sugg[it.rec.id] || {};
       const isFail = it.severity === "fail";
-      const chip = (label, color) => /*#__PURE__*/React.createElement("span", {
-        key: label,
+      const stateColor = st => st === "pass" ? T.success : st === "warn" ? T.warning : T.danger;
+      const chip = (label, st, key) => /*#__PURE__*/React.createElement("span", {
+        key: key || label,
         style: {
           fontSize: 10.5,
           fontWeight: 600,
-          color: color,
-          background: `${color}18`,
-          border: `1px solid ${color}44`,
+          color: stateColor(st),
+          background: `${stateColor(st)}18`,
+          border: `1px solid ${stateColor(st)}44`,
           borderRadius: 5,
           padding: "2px 7px"
         }
@@ -9877,7 +9926,7 @@ ${compressVoice(voice)}`;
           flexWrap: "wrap",
           marginBottom: 10
         }
-      }, it.fails.map(c => chip(c.label, T.danger)), it.warns.map(c => chip(c.label, T.warning))), aiAvailable() ? /*#__PURE__*/React.createElement(Btn, {
+      }, it.checks.map((c, ci) => chip(c.label, c.state, ci))), aiAvailable() ? /*#__PURE__*/React.createElement(Btn, {
         variant: "ghost",
         small: true,
         onClick: () => suggestRewrite(it.rec),
@@ -9912,7 +9961,29 @@ ${compressVoice(voice)}`;
           lineHeight: 1.5,
           marginBottom: 10
         }
-      }, s.text), /*#__PURE__*/React.createElement("div", {
+      }, s.text), (() => {
+        const before = it.pass;
+        const g = analyzeRecommendation(s.text);
+        const after = g.passCount;
+        return /*#__PURE__*/React.createElement("div", {
+          style: {
+            marginBottom: 10
+          }
+        }, /*#__PURE__*/React.createElement("div", {
+          style: {
+            fontSize: 11,
+            fontWeight: 600,
+            color: after > before ? T.success : T.textMuted,
+            marginBottom: 6
+          }
+        }, "Passes " + after + " of " + g.total + " checks" + (after > before ? " (up from " + before + ")" : "")), /*#__PURE__*/React.createElement("div", {
+          style: {
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap"
+          }
+        }, g.checks.map((c, ci) => chip(c.label, c.state, "s" + ci))));
+      })(), /*#__PURE__*/React.createElement("div", {
         style: {
           display: "flex",
           gap: 8,
