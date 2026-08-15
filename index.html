@@ -2137,19 +2137,63 @@ function RAS() {
     })),
     title: themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode",
     style: {
-      fontFamily: T.font,
-      fontSize: 14,
-      lineHeight: 1,
-      cursor: "pointer",
-      color: T.textMuted,
-      background: "transparent",
-      border: `1px solid ${T.border}`,
-      padding: "6px 9px",
-      borderRadius: 7,
       display: "flex",
-      alignItems: "center"
+      alignItems: "center",
+      gap: 9,
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      padding: "4px 2px",
+      fontFamily: T.font
     }
-  }, themeMode === "dark" ? "☀" : "☾"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "15",
+    height: "15",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: T.textMuted,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: {
+      display: "block",
+      flex: "0 0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("circle", {
+    cx: "12",
+    cy: "12",
+    r: "4"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: "relative",
+      width: 40,
+      height: 22,
+      borderRadius: 11,
+      background: themeMode === "dark" ? T.accentInk : T.bgInput,
+      border: `1px solid ${T.border}`,
+      transition: "background .15s",
+      flex: "0 0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      position: "absolute",
+      top: 2,
+      left: themeMode === "dark" ? 19 : 2,
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: themeMode === "dark" ? "#fff" : T.textBright,
+      transition: "left .15s"
+    }
+  })), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 600,
+      color: T.textSecondary
+    }
+  }, "Dark mode")), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowTemplate(true),
     style: {
       fontFamily: T.font,
