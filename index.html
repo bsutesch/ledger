@@ -3536,6 +3536,76 @@ const EXAMPLE_RECS = [{
   ai: "FALSE",
   communicated: "2025-05",
   fixed: "2025-06"
+}, {
+  id: "CKO-090",
+  project: "Checkout Redesign",
+  title: "Consider improving the guest checkout experience",
+  impact: "high",
+  status: "communicated",
+  owner: "Jordan Lee",
+  done: "",
+  evidence: "",
+  jira: "TKT-1190",
+  task: "Complete a purchase",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: ""
+}, {
+  id: "PP-090",
+  project: "Partner Portal",
+  title: "Optimize the partner onboarding flow",
+  impact: "medium",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "",
+  jira: "PP-490",
+  task: "Onboard a partner",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: ""
+}, {
+  id: "PP-091",
+  project: "Partner Portal",
+  title: "Explore ways to streamline the dashboard and also clean up the reports and fix search",
+  impact: "medium",
+  status: "communicated",
+  owner: "Alex Rivera",
+  done: "",
+  evidence: "",
+  jira: "PP-491",
+  task: "Review the dashboard",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: ""
+}, {
+  id: "EMP-090",
+  project: "Employee Dashboard",
+  title: "Enhance the reporting screens",
+  impact: "medium",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "",
+  jira: "EMP-390",
+  task: "Run a report",
+  ai: "FALSE",
+  communicated: "2025-05",
+  fixed: ""
+}, {
+  id: "EMP-091",
+  project: "Employee Dashboard",
+  title: "Make things better",
+  impact: "low",
+  status: "communicated",
+  owner: "Morgan Chen",
+  done: "",
+  evidence: "",
+  jira: "EMP-391",
+  task: "General",
+  ai: "FALSE",
+  communicated: "2025-06",
+  fixed: ""
 }];
 function generateExampleData() {
   const s = emptyState();
@@ -8341,7 +8411,7 @@ function Insights({
   const [staleFilter, setStaleFilter] = useState("all"); // "all" | "active" | projectId
   const [staleOpen, setStaleOpen] = useState(true);
   const [timingFilter, setTimingFilter] = useState("all"); // "all" | "active" | projectId
-  const [wordFilter, setWordFilter] = useState("fix"); // "fix" | "warn" | "flagged"
+  const [wordFilter, setWordFilter] = useState("flagged"); // "fix" | "warn" | "flagged"
   const [wordOpen, setWordOpen] = useState(true);
   const [sugg, setSugg] = useState({}); // rec.id -> { loading, text }
   // Deterministic wording review: run the built-in analyzeRecommendation over every
@@ -8439,6 +8509,7 @@ function Insights({
         setSugg(cache);
       }
       setExportMsg("Building the file…");
+      const XLSX = await loadXLSX();
       const aoa = [["Project", "Recommendation ID", "Current wording", "Issues to fix", "Suggested wording"]];
       list.forEach(it => {
         const issues = [...it.fails, ...it.warns].map(c => c.label).join("; ");
