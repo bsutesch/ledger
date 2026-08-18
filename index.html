@@ -2445,7 +2445,8 @@ function RAS() {
     onUpdateRec: updateRec,
     onRemoveRec: removeRec,
     onUpdateProject: updateProject,
-    flash: flash
+    flash: flash,
+    readOnly: readOnly
   }) : view === "overview" ? /*#__PURE__*/React.createElement(Overview, {
     active: activeProjects,
     inactive: inactiveProjects,
@@ -2470,6 +2471,13 @@ function RAS() {
           };
         }
         const next = mergeImport(s, payload);
+        if (fromSpreadsheet) {
+          // Any spreadsheet/tracker import locks the app to read-only:
+          // the file is the source of truth. This is set on the returned
+          // state directly so it can never be missed.
+          next.mode = "spreadsheet";
+          next.importedFromSpreadsheet = true;
+        }
         if (next.__lastImport?.kind === "history") {
           const {
             rasCount,
