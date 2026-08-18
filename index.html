@@ -854,6 +854,25 @@ function loadHtml2Canvas() {
 // SheetJS (xlsx) — loaded from CDN the same way. Bare dynamic import("xlsx")
 // does not resolve in the artifact sandbox, so inject the script and read the
 // global instead.
+// ─── AI handoff (run the analysis in your own tool) ──────────────────────────────
+// For teams that don't want recommendations sent to a model from Ledger. Builds a
+// self-contained file with the exact instructions plus the data, so pasting it into
+// any AI assistant reproduces what Ledger's AI features would have done. Nothing is
+// sent from Ledger when this is used.
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], {
+    type: "text/markdown;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+function buildHandoff(title, instructions, dataText) {
+  return "# " + title + "\n\nRun this in your own AI tool. Ledger did not send anything to any model — this file " + "has everything needed to produce the same result yourself. Paste the whole file into an AI " + "assistant such as Claude or ChatGPT.\n\n" + "## Instructions for the AI\n\n" + instructions.trim() + "\n\n## Data\n\n" + dataText.trim() + "\n";
+}
 function loadXLSX() {
   if (window.XLSX) return Promise.resolve(window.XLSX);
   return new Promise((resolve, reject) => {
@@ -948,6 +967,8 @@ function emptyState() {
     // { [projectId]: { ym: 'CONTINUE'|'CAUTION'|'STOP' } } — authoritative investment-status history
     mode: null,
     // "managed" (edit in app) | "spreadsheet" (read-only) — set at onboarding
+    importedFromSpreadsheet: false,
+    // true once a tracker spreadsheet is imported; forces read-only regardless of mode
     ai: {
       enabled: false,
       key: ""
@@ -1773,7 +1794,10 @@ function RAS() {
   const [aboutSeen, setAboutSeen] = useState(false);
   const [showTemplate, setShowTemplate] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const readOnly = state.mode === "spreadsheet";
+  // Read-only when the app is in spreadsheet mode OR the current data was imported
+  // from a tracker. Imported data must never be editable in-app — the spreadsheet
+  // is the source of truth — regardless of the mode toggle.
+  const readOnly = state.mode === "spreadsheet" || state.importedFromSpreadsheet === true;
   // Sync AI access to window globals the module-level AI helpers read.
   useEffect(() => {
     window.__LEDGER_AI_KEY = state.ai && state.ai.enabled && state.ai.key ? state.ai.key.trim() : "";
@@ -2440,6 +2464,7 @@ function RAS() {
           s = {
             ...emptyState(),
             mode: fromSpreadsheet ? "spreadsheet" : s.mode,
+            importedFromSpreadsheet: fromSpreadsheet ? true : s.importedFromSpreadsheet,
             ai: s.ai,
             settings: s.settings
           };
@@ -8619,6 +8644,19 @@ function Insights({
   // and keep their own file as the source of truth. When AI is available it fills a
   // Suggested wording column for every flagged item; without it, the file still
   // carries the current wording and the specific issues to fix by hand.
+  const downloadHandoff = () => {
+    const list = [...wording.fix, ...wording.warn];
+    if (!list.length) {
+      flash("Nothing flagged to export.");
+      return;
+    }
+    const instructions = "Rewrite each research recommendation listed under Data so it follows this standard:\n" + "1. Open with a strong, concrete action verb (for example add, remove, replace, collapse, reorder, enable, consolidate). Do NOT open with a hedge (consider, explore, evaluate, review) or a vague improvement verb (optimize, improve, streamline, enhance, revamp).\n" + "2. Name the specific change, not a vague goal. Avoid words like \u201cexperience,\u201d \u201cthings,\u201d or \u201cbetter.\u201d\n" + "3. Add a \u201cso that <who> <benefit>\u201d clause that names who benefits and why.\n" + "4. Keep it to one sentence, roughly 6 to 40 words. Do not combine multiple asks with \u201cand also.\u201d\n" + "Preserve the original meaning. Return a two-column list: the ID, then the single rewritten sentence. Each item below shows the current wording and the specific checks it fails, to guide your rewrite.";
+    const dataText = list.map(it => {
+      const issues = [...it.fails, ...it.warns].map(c => c.label).join(", ") || "none";
+      return "- ID " + (it.rec.trackerId || it.rec.id || "?") + " (" + it.project + ")\n  Current: " + (it.rec.title || "") + "\n  Fix: " + issues;
+    }).join("\n\n");
+    downloadTextFile(`ledger-wording-handoff-${ymNow()}.md`, buildHandoff("Recommendation wording rewrites", instructions, dataText));
+  };
   const downloadReview = async withAI => {
     const list = [...wording.fix, ...wording.warn];
     if (!list.length) {
@@ -9958,7 +9996,12 @@ ${compressVoice(voice)}`;
     small: true,
     onClick: () => downloadReview(aiAvailable()),
     disabled: exporting || suggestingAll || wording.fix.length + wording.warn.length === 0
-  }, exporting ? exportMsg || "Preparing…" : aiAvailable() ? "Download all with suggestions (xlsx)" : "Download review (xlsx)"), /*#__PURE__*/React.createElement("span", {
+  }, exporting ? exportMsg || "Preparing…" : aiAvailable() ? "Download all with suggestions (xlsx)" : "Download review (xlsx)"), /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
+    small: true,
+    onClick: downloadHandoff,
+    disabled: wording.fix.length + wording.warn.length === 0
+  }, "Export AI handoff (.md)"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11.5,
       color: T.textMuted,
@@ -10304,7 +10347,42 @@ ${compressVoice(voice)}`;
     pts: 0,
     color: T.textDim
   }];
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  return /*#__PURE__*/React.createElement("div", null, readOnly && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: T.accentSoft,
+      border: `1px solid ${T.border}`,
+      borderRadius: 8,
+      padding: "8px 12px",
+      marginBottom: 16,
+      fontSize: 12.5,
+      color: T.textSecondary,
+      lineHeight: 1.45
+    }
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "14",
+    height: "14",
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: T.accentInk,
+    strokeWidth: "2",
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    style: {
+      display: "block",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("rect", {
+    x: "3",
+    y: "11",
+    width: "18",
+    height: "11",
+    rx: "2"
+  }), /*#__PURE__*/React.createElement("path", {
+    d: "M7 11V7a5 5 0 0 1 10 0v4"
+  })), /*#__PURE__*/React.createElement("span", null, "Read-only. This data was imported from a spreadsheet, which stays the source of truth. Edit it in your spreadsheet and re-import to update.")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -12240,14 +12318,14 @@ function ReadoutModal({
       scopeName: scope === "portfolio" ? "Portfolio" : pname[scope] || "Product"
     };
   }, [scope, projects, recs, portfolio, active]);
-  const genNarrative = async () => {
-    setBusy(true);
-    try {
-      const winLines = data.wins.map(w => `${w.title} (${w.project}, ${w.impact} impact)`).join("; ") || "none adopted yet";
-      const stalledLines = data.stalled.map(s => `${s.title} (${s.project}, ${s.impact} impact, ${s.months} months waiting)`).join("; ") || "none";
-      const prompt = `Write a stakeholder readout for ${data.scopeName} using ONLY these numbers. Do not invent, re-round, or recompute any figure.
+  const buildReadoutPrompt = () => {
+    const winLines = data.wins.map(w => `${w.title} (${w.project}, ${w.impact} impact)`).join("; ") || "none adopted yet";
+    const stalledLines = data.stalled.map(s => `${s.title} (${s.project}, ${s.impact} impact, ${s.months} months waiting)`).join("; ") || "none";
+    const trendLine = data.series && data.series.length ? data.series.map(p => `${p.label}: ${p.ras}`).join(", ") : "no history";
+    return `Write a stakeholder readout for ${data.scopeName} using ONLY these numbers. Do not invent, re-round, or recompute any figure.
 
 Recommendation-Adoption Score ${data.ras == null ? "n/a" : data.ras} (${data.grade ? data.grade.grade : "n/a"}). ${data.products} product(s), ${data.total} recommendations, ${data.adoptPct}% adopted, ${data.committed} committed, ${data.communicated} awaiting movement.
+RAS trend over time: ${trendLine}.
 Top adopted wins: ${winLines}.
 Highest-impact recommendations stalled in communicated (unrealized value): ${stalledLines}.
 
@@ -12255,11 +12333,18 @@ Write two short paragraphs for a leadership audience. First: what the score says
 
 VOICE RULES (follow exactly):
 ${compressVoice(voice)}`;
-      setNarrative(await callClaude(prompt, 500));
+  };
+  const genNarrative = async () => {
+    setBusy(true);
+    try {
+      setNarrative(await callClaude(buildReadoutPrompt(), 500));
     } catch (e) {
       flash("Summary failed: " + e.message);
     }
     setBusy(false);
+  };
+  const exportHandoff = () => {
+    downloadTextFile(`ledger-readout-handoff-${data.scopeName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${ymNow()}.md`, buildHandoff("Stakeholder readout summary — " + data.scopeName, "Follow the instructions below exactly. Everything you need is included.", buildReadoutPrompt()));
   };
   const exportPNG = async () => {
     if (!cardRef.current) return;
@@ -12388,6 +12473,10 @@ ${compressVoice(voice)}`;
     onClick: genNarrative,
     disabled: busy
   }, busy ? "Writing…" : narrative ? "Rewrite summary" : "Write summary") : null, /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
+    small: true,
+    onClick: exportHandoff
+  }, "Export AI handoff (.md)"), /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     small: true,
     onClick: exportPNG,
