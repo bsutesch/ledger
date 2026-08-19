@@ -890,6 +890,42 @@ function downloadTextFile(filename, text) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
+
+// Export a standalone HTML file with the current data baked in. Anyone can open
+// it in a browser and see exactly what the user sees right now — no server, no
+// import, no login. The snapshot is read-only by design.
+function exportSnapshot(state) {
+  const html = document.documentElement.outerHTML;
+  // Find the app <script> and inject the snapshot data before it.
+  const marker = "function computeRAS";
+  const scriptIdx = html.indexOf(marker);
+  if (scriptIdx < 0) {
+    alert("Could not build snapshot — app script not found.");
+    return;
+  }
+  const openTag = html.lastIndexOf("<script>", scriptIdx);
+  // Serialize state, stripping AI keys so the snapshot never leaks credentials.
+  const clean = {
+    ...state,
+    ai: {
+      enabled: false,
+      key: ""
+    }
+  };
+  const payload = "<script>window.__LEDGER_SNAPSHOT_DATA=" + JSON.stringify(clean).replace(/<\//g, "<\\/") +
+  // escape closing script tags inside JSON
+  ";</script>\n";
+  const out = html.slice(0, openTag) + "<!-- Ledger snapshot — frozen-in-time, read-only -->\n" + payload + html.slice(openTag);
+  const blob = new Blob(["<!DOCTYPE html>\n<html>\n" + out + "\n</html>"], {
+    type: "text/html;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "ledger-snapshot-" + ymNow() + ".html";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
 function buildHandoff(title, instructions, dataText) {
   return "# " + title + "\n\nRun this in your own AI tool. Ledger did not send anything to any model — this file " + "has everything needed to produce the same result yourself. Paste the whole file into an AI " + "assistant such as Claude or ChatGPT.\n\n" + "## Instructions for the AI\n\n" + instructions.trim() + "\n\n## Data\n\n" + dataText.trim() + "\n";
 }
@@ -1876,6 +1912,20 @@ function RAS() {
   // ── load / seed ──────────────────────────────────────────────────────────────
   useEffect(() => {
     (async () => {
+      // Snapshot mode: if the HTML has embedded data, load it directly and skip
+      // storage. The snapshot is read-only by design — it's a frozen-in-time view.
+      if (window.__LEDGER_SNAPSHOT_DATA) {
+        const snap = window.__LEDGER_SNAPSHOT_DATA;
+        if (!snap.ai) snap.ai = {
+          enabled: false,
+          key: ""
+        };
+        snap.mode = snap.mode || "spreadsheet";
+        snap.importedFromSpreadsheet = true; // always read-only
+        setState(snap);
+        setLoaded(true);
+        return;
+      }
       let next = null;
       try {
         if (window.storage) {
@@ -1910,6 +1960,9 @@ function RAS() {
   // ── persist ──────────────────────────────────────────────────────────────────
   const save = useCallback(async s => {
     try {
+      // Never persist when running as a snapshot — the data is baked into the
+      // HTML and shouldn't overwrite a real session's storage.
+      if (window.__LEDGER_SNAPSHOT_DATA) return;
       if (window.storage) await window.storage.set(STORAGE_KEY, JSON.stringify(s));
     } catch (e) {}
   }, []);
@@ -2256,6 +2309,20 @@ function RAS() {
       whiteSpace: "nowrap"
     }
   }, "Import guide"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => exportSnapshot(state),
+    style: {
+      fontFamily: T.font,
+      fontSize: 11.5,
+      fontWeight: 600,
+      cursor: "pointer",
+      color: T.textMuted,
+      background: "transparent",
+      border: `1px solid ${T.border}`,
+      padding: "5px 9px",
+      borderRadius: 7,
+      whiteSpace: "nowrap"
+    }
+  }, "Snapshot"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowScoring(true),
     style: {
       fontFamily: T.font,
