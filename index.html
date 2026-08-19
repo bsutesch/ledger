@@ -12715,14 +12715,24 @@ ${compressVoice(voice)}`;
       marginBottom: 18,
       flexWrap: "wrap"
     }
-  }, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: "0 0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 48,
       fontWeight: 800,
       color: T.textBright,
       lineHeight: 1
     }
-  }, data.ras == null ? "—" : data.ras), data.grade && /*#__PURE__*/React.createElement("span", {
+  }, data.ras == null ? "—" : data.ras), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5,
+      color: T.textMuted,
+      marginTop: 5
+    }
+  }, "Recommendation-Adoption Score")), data.grade && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       fontWeight: 700,
@@ -12746,12 +12756,7 @@ ${compressVoice(voice)}`;
       fontSize: 12,
       color: T.textMuted
     }
-  }, data.signalWhy), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontSize: 12.5,
-      color: T.textMuted
-    }
-  }, "Recommendation-Adoption Score")), /*#__PURE__*/React.createElement("div", {
+  }, data.signalWhy)), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 18,
