@@ -895,36 +895,38 @@ function downloadTextFile(filename, text) {
 // it in a browser and see exactly what the user sees right now — no server, no
 // import, no login. The snapshot is read-only by design.
 function exportSnapshot(state) {
-  const html = document.documentElement.outerHTML;
-  // Find the app <script> and inject the snapshot data before it.
-  const marker = "function computeRAS";
-  const scriptIdx = html.indexOf(marker);
-  if (scriptIdx < 0) {
-    alert("Could not build snapshot — app script not found.");
-    return;
-  }
-  const openTag = html.lastIndexOf("<script>", scriptIdx);
-  // Serialize state, stripping AI keys so the snapshot never leaks credentials.
-  const clean = {
-    ...state,
-    ai: {
-      enabled: false,
-      key: ""
+  try {
+    const html = document.documentElement.outerHTML;
+    const marker = "function computeRAS";
+    const scriptIdx = html.indexOf(marker);
+    if (scriptIdx < 0) {
+      alert("Snapshot export requires the deployed version at your Ledger URL. It can\u2019t run in a preview window because the full app shell isn\u2019t available here.");
+      return;
     }
-  };
-  const payload = "<script>window.__LEDGER_SNAPSHOT_DATA=" + JSON.stringify(clean).replace(/<\//g, "<\\/") +
-  // escape closing script tags inside JSON
-  ";</script>\n";
-  const out = html.slice(0, openTag) + "<!-- Ledger snapshot — frozen-in-time, read-only -->\n" + payload + html.slice(openTag);
-  const blob = new Blob(["<!DOCTYPE html>\n<html>\n" + out + "\n</html>"], {
-    type: "text/html;charset=utf-8"
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "ledger-snapshot-" + ymNow() + ".html";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1500);
+    const openTag = html.lastIndexOf("<script>", scriptIdx);
+    const clean = {
+      ...state,
+      ai: {
+        enabled: false,
+        key: ""
+      }
+    };
+    const payload = "<script>window.__LEDGER_SNAPSHOT_DATA=" + JSON.stringify(clean).replace(/<\//g, "<\\/") + ";<\/script>\n";
+    const out = html.slice(0, openTag) + "<!-- Ledger snapshot \u2014 frozen-in-time, read-only -->\n" + payload + html.slice(openTag);
+    const blob = new Blob(["<!DOCTYPE html>\n<html>\n" + out + "\n</html>"], {
+      type: "text/html;charset=utf-8"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "ledger-snapshot-" + ymNow() + ".html";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  } catch (e) {
+    alert("Snapshot export isn\u2019t available in this environment. Deploy Ledger to your own URL and use the Snapshot button there.");
+  }
 }
 function buildHandoff(title, instructions, dataText) {
   return "# " + title + "\n\nRun this in your own AI tool. Ledger did not send anything to any model — this file " + "has everything needed to produce the same result yourself. Paste the whole file into an AI " + "assistant such as Claude or ChatGPT.\n\n" + "## Instructions for the AI\n\n" + instructions.trim() + "\n\n## Data\n\n" + dataText.trim() + "\n";
