@@ -812,6 +812,16 @@ const SIGNAL_COLOR = {
   CAUTION: "#FBAB2C",
   STOP: "#E3241B"
 };
+// Display wording for the investment signals. The internal keys never change —
+// every computation, threshold, and stored value still uses CONTINUE/CAUTION/STOP.
+const SIGNAL_LABEL = {
+  CONTINUE: "Strong",
+  CAUTION: "Caution",
+  STOP: "Warning"
+};
+function signalLabel(sig) {
+  return SIGNAL_LABEL[sig] || sig || "";
+}
 // Plain-language reason for an investment label, from its two inputs: the RAS
 // six-month movement and the delivery velocity. Deterministic, not AI.
 function signalReason(p) {
@@ -1368,7 +1378,7 @@ function SignalChip({
       borderRadius: 6,
       letterSpacing: 0.3
     }
-  }, signal);
+  }, signalLabel(signal));
 }
 function Field({
   label,
@@ -4168,12 +4178,12 @@ async function exportXLSX(state, projectData) {
     RAS: p.currentRas ?? "",
     Grade: p.currentRas != null ? gradeFor(p.currentRas)?.grade || "" : "",
     "Velocity (recs/mo)": p.signals.velocity,
-    "Velocity Signal": p.signals.velSig || "",
+    "Velocity Signal": signalLabel(p.signals.velSig) || "",
     "6M Trend Direction": p.signals.trend.direction,
     "6M Trend Delta": p.signals.trend.delta,
     "6M Avg RAS": p.signals.avgRas ?? "",
-    "RAS Signal": p.signals.rasSig || "",
-    "Overall Signal": p.signals.overall || ""
+    "RAS Signal": signalLabel(p.signals.rasSig) || "",
+    "Overall Signal": signalLabel(p.signals.overall) || ""
   }));
   const wsSig = XLSX.utils.json_to_sheet(sigRows);
   wsSig["!cols"] = [{
@@ -4758,7 +4768,7 @@ function TemplateGuide({
       XLSX.utils.book_append_sheet(wb, wsR, "Recommendations");
 
       // — How to use sheet —
-      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Parent product", 'Optional. To group sub-projects under one product for roll-up reporting, put the parent product\'s exact name here. Example: a row named "Circuit: Labs" with Parent product "Circuit". The parent\'s roll-up pools its sub-projects\' recommendations and scores them together. Leave blank for standalone products.'], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. The single person accountable for the decision. Feeds the Status-by-owner view."], ["Description / Comments", "Optional. Extra context on the recommendation, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date communicated", "Recommended. YYYY-MM or M/D/YYYY. The date the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal, and the time to fix. Leave it blank and velocity reads zero, which triggers a false Stop signal."], ["Date fixed", "Recommended. YYYY-MM or M/D/YYYY. When the recommendation was adopted. Used with Date communicated to calculate time to fix, and to rebuild the trend line and 6-month movement."], ["Additional researcher 1 (optional)", "Optional. A second researcher who worked on the recommendation. Shown alongside the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional. A third researcher. Also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional. Other projects related to this one. Reference only."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Continue, Caution, or Stop investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
+      const how = [["Ledger — how to use this template"], [""], ["1. PROJECTS SHEET"], ["Project", "The product or workstream you research. One row per product."], ["Status", "Active or Archived. Archived products keep their history but are left out of the portfolio score and default views."], ["Parent product", 'Optional. To group sub-projects under one product for roll-up reporting, put the parent product\'s exact name here. Example: a row named "Circuit: Labs" with Parent product "Circuit". The parent\'s roll-up pools its sub-projects\' recommendations and scores them together. Leave blank for standalone products.'], ["Team / Owner", "Optional. Who owns the product relationship."], ["Notes", "Optional. Free text, ignored on import."], [""], ["2. RECOMMENDATIONS SHEET"], ["", "Only Project and Recommendation are required. Everything else shapes the score, the signals, and the breakdowns, so fill in as much as you can. Skipping columns quietly shrinks what Ledger can show."], ["Recommendation ID", "Recommended. Any unique text. Rows are matched by this ID so re-importing updates instead of duplicating."], ["Project", "Required. Must match a Project name on the Projects sheet exactly."], ["Recommendation", "Required. The recommendation itself, written as an action."], ["Impact", "Recommended. high, medium, or low. Drives the weight, where high = 3 points, medium = 2, low = 1. Missing values default to medium."], ["Status", "Recommended. adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and lowers the score."], ["Owner", "Recommended. The single person accountable for the decision. Feeds the Status-by-owner view."], ["Description / Comments", "Optional. Extra context on the recommendation, so it can't be reinterpreted later. Reference only."], ["Evidence", "Optional. A link to the study that produced it. Reference only."], ["Jira", "Optional. Ticket reference. Reference only."], ["Impacted Task", "Optional. The user task this affects. Reference only."], ["AI Recommendation", "Recommended. TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Date communicated", "Recommended. YYYY-MM or M/D/YYYY. The date the recommendation was delivered. Ledger uses this to calculate velocity (recommendations per month), which drives the investment signal, and the time to fix. Leave it blank and velocity reads zero, which triggers a false Warning signal."], ["Date fixed", "Recommended. YYYY-MM or M/D/YYYY. When the recommendation was adopted. Used with Date communicated to calculate time to fix, and to rebuild the trend line and 6-month movement."], ["Additional researcher 1 (optional)", "Optional. A second researcher who worked on the recommendation. Shown alongside the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional. A third researcher. Also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional. Other projects related to this one. Reference only."], [""], ["3. HOW THE SCORE WORKS"], ["", "Adopted recommendations earn full points. Committed earn 66%. Communicated earn nothing until they move."], ["", "RAS is the percentage of earned points out of the maximum possible. Canceled, rejected, and deferred recommendations are handled per the Recommendation status handling setting, which defaults to excluding canceled and counting rejected and deferred as unadopted."], [""], ["4. VELOCITY AND INVESTMENT SIGNALS"], ["", "Velocity is the average number of new recommendations per month over the last three months, counted from Date Communicated. The RAS trend is the six-month direction of the score. Together they produce a Strong, Caution, or Warning investment signal for each product."], [""], ["5. IMPORTING"], ["", "Save this file, then use Import recommendations on the Overview page. Every number is computed locally in your browser."]];
       const wsH = XLSX.utils.aoa_to_sheet(how);
       wsH["!cols"] = [{
         wch: 22
@@ -4903,7 +4913,7 @@ function TemplateGuide({
       color: T.textBright,
       fontWeight: 700
     }
-  }, "Notes"))), /*#__PURE__*/React.createElement("tbody", null, [["Project", "Required", "Exact word. The product or workstream name. Nothing imports without it."], ["Recommendation", "Required", "The column must contain the word \u201cRecommendation.\u201d This is the unit Ledger scores."], ["Status", "Recommended", "adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and pulls the score down."], ["Impact", "Recommended", "high, medium, or low. \u201cPriority\u201d also works. Missing values default to medium, so the score stops reflecting what mattered."], ["Owner", "Recommended", "The person accountable. \u201cResearcher\u201d also works. Leave it out and the Status-by-owner view has nothing to show."], ["Recommendation ID", "Recommended", "Any unique text. \u201cID\u201d also works. Without it a re-import duplicates rows instead of updating them."], ["Date Communicated", "Recommended", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. Without it velocity reads zero, which triggers a false Stop signal."], ["Date Fixed", "Recommended", "YYYY-MM or M/D/YYYY. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], ["AI Recommendation", "Recommended", "TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Description / Comments", "Optional", "Extra context on the recommendation. \u201cDescription\u201d or \u201cComment\u201d in the header also work. Reference only."], ["Evidence", "Optional", "A link to the study. Reference only."], ["Jira", "Optional", "A ticket reference. Reference only."], ["Impacted Task", "Optional", "The user task this recommendation affects. Reference only."], ["Additional researcher 1 (optional)", "Optional", "A second researcher, shown next to the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional", "A third researcher, also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional", "Other projects related to this one. Reference only."]].map((r, i) => /*#__PURE__*/React.createElement("tr", {
+  }, "Notes"))), /*#__PURE__*/React.createElement("tbody", null, [["Project", "Required", "Exact word. The product or workstream name. Nothing imports without it."], ["Recommendation", "Required", "The column must contain the word \u201cRecommendation.\u201d This is the unit Ledger scores."], ["Status", "Recommended", "adopted, committed, communicated, canceled, deferred, or rejected. Missing values default to communicated, which counts as unadopted and pulls the score down."], ["Impact", "Recommended", "high, medium, or low. \u201cPriority\u201d also works. Missing values default to medium, so the score stops reflecting what mattered."], ["Owner", "Recommended", "The person accountable. \u201cResearcher\u201d also works. Leave it out and the Status-by-owner view has nothing to show."], ["Recommendation ID", "Recommended", "Any unique text. \u201cID\u201d also works. Without it a re-import duplicates rows instead of updating them."], ["Date Communicated", "Recommended", "YYYY-MM (e.g. 2026-03) or M/D/YYYY. Without it velocity reads zero, which triggers a false Warning signal."], ["Date Fixed", "Recommended", "YYYY-MM or M/D/YYYY. When the recommendation was adopted. Without it the trend line and 6-month movement cannot be rebuilt."], ["AI Recommendation", "Recommended", "TRUE or FALSE. Without it the AI vs non-AI adoption view has nothing to compare."], ["Description / Comments", "Optional", "Extra context on the recommendation. \u201cDescription\u201d or \u201cComment\u201d in the header also work. Reference only."], ["Evidence", "Optional", "A link to the study. Reference only."], ["Jira", "Optional", "A ticket reference. Reference only."], ["Impacted Task", "Optional", "The user task this recommendation affects. Reference only."], ["Additional researcher 1 (optional)", "Optional", "A second researcher, shown next to the owner in the Additional researchers column."], ["Additional researcher 2 (optional)", "Optional", "A third researcher, also shown in the Additional researchers column."], ["Cross project reference (optional)", "Optional", "Other projects related to this one. Reference only."]].map((r, i) => /*#__PURE__*/React.createElement("tr", {
     key: i,
     style: {
       borderBottom: `1px solid ${T.border}`
@@ -5402,7 +5412,7 @@ function Overview({
       headline = "No active recommendations yet — import a tracker to start scoring the portfolio.";
     } else if (stop.length) {
       headTone = T.danger;
-      headline = `${stop.length} project${stop.length > 1 ? "s are" : " is"} flashing a stop signal — adoption has stalled where effort is already invested. Start with ${stop[0].name}.`;
+      headline = `${stop.length} project${stop.length > 1 ? "s are" : " is"} flashing a warning signal — adoption has stalled where effort is already invested. Start with ${stop[0].name}.`;
     } else if (topDown && topDown.signals.trend.delta < 0 && Math.abs(topDown.signals.trend.delta) >= (topUp ? topUp.signals.trend.delta : 0)) {
       headTone = T.danger;
       headline = `${topDown.name} is the steepest decline this window (${topDown.signals.trend.delta} RAS) — the clearest place to dig in next.`;
@@ -5618,7 +5628,7 @@ function Overview({
             padding: "3px 9px",
             whiteSpace: "nowrap"
           }
-        }, sig || "—");
+        }, signalLabel(sig) || "—");
       };
       return /*#__PURE__*/React.createElement("div", {
         style: {
@@ -5684,7 +5694,7 @@ function Overview({
           flexWrap: "wrap",
           marginBottom: 12
         }
-      }, [["CONTINUE", "Continue", cont], ["CAUTION", "Caution", caution], ["STOP", "Stop", stop]].map(([key, label, group]) => {
+      }, [["CONTINUE", SIGNAL_LABEL.CONTINUE, cont], ["CAUTION", SIGNAL_LABEL.CAUTION, caution], ["STOP", SIGNAL_LABEL.STOP, stop]].map(([key, label, group]) => {
         const on = sigFilter === key;
         const c = SIGNAL_COLOR[key];
         return /*#__PURE__*/React.createElement("button", {
@@ -5717,7 +5727,7 @@ function Overview({
           fontSize: 9.5,
           color: T.textDim
         }
-      }, "Why it's ", sigFilter.toLowerCase()), /*#__PURE__*/React.createElement("span", {
+      }, "Why it's ", signalLabel(sigFilter).toLowerCase()), /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 10,
           fontWeight: 700,
@@ -7646,7 +7656,7 @@ function Trends({
         const net = first != null && last != null ? +(last - first).toFixed(1) : null;
         const lo = vals.length ? Math.min(...vals) : null;
         const hi = vals.length ? Math.max(...vals) : null;
-        return `${p.name}: start ${first ?? "n/a"}, latest ${last ?? "n/a"}, net ${net == null ? "n/a" : (net >= 0 ? "+" : "") + net}, range ${lo ?? "n/a"}-${hi ?? "n/a"}, 6-month trend ${p.signals.trend.direction} (${p.signals.trend.delta >= 0 ? "+" : ""}${p.signals.trend.delta}), current signal ${p.signals.overall}`;
+        return `${p.name}: start ${first ?? "n/a"}, latest ${last ?? "n/a"}, net ${net == null ? "n/a" : (net >= 0 ? "+" : "") + net}, range ${lo ?? "n/a"}-${hi ?? "n/a"}, 6-month trend ${p.signals.trend.direction} (${p.signals.trend.delta >= 0 ? "+" : ""}${p.signals.trend.delta}), current signal ${signalLabel(p.signals.overall)}`;
       };
       const pvals = chartData.map(r => r.__portfolio).filter(v => v != null);
       const pfirst = pvals.length ? pvals[0] : null;
@@ -7930,7 +7940,7 @@ function Matrix({
   const genSummary = async () => {
     setBusy(true);
     try {
-      const lines = shown.map(p => `${p.name}: RAS ${p.currentRas ?? "n/a"}, velocity ${p.signals.velocity}/mo (${p.signals.velSig}), 6-month trend ${p.signals.trend.direction} (${p.signals.trend.delta >= 0 ? "+" : ""}${p.signals.trend.delta}), RAS signal ${p.signals.rasSig}, overall ${p.signals.overall}`).join("\n");
+      const lines = shown.map(p => `${p.name}: RAS ${p.currentRas ?? "n/a"}, velocity ${p.signals.velocity}/mo (${signalLabel(p.signals.velSig)}), 6-month trend ${p.signals.trend.direction} (${p.signals.trend.delta >= 0 ? "+" : ""}${p.signals.trend.delta}), RAS signal ${signalLabel(p.signals.rasSig)}, overall ${signalLabel(p.signals.overall)}`).join("\n");
       const prompt = `You are writing a research-investment summary for a UX research leader. Use this exact data. Do not invent numbers or recompute scores.
 
 ${lines}
@@ -10436,7 +10446,7 @@ RAS this period: ${ras.ras} (${ras.grade?.grade})
 Recommendations: ${agg.total} active in pool, ${agg.canceled} canceled and excluded.
 Adopted: ${b.high.adopted} high, ${b.medium.adopted} medium, ${b.low.adopted} low.
 Committed: ${b.committed.count}. Communicated and not yet moved: ${b.communicated.count}.
-Velocity: ${s.velocity}/month (${s.velSig}). Six-month trend: ${s.trend.direction}, change ${s.trend.delta >= 0 ? "+" : ""}${s.trend.delta}. Overall investment signal: ${s.overall}.
+Velocity: ${s.velocity}/month (${signalLabel(s.velSig)}). Six-month trend: ${s.trend.direction}, change ${s.trend.delta >= 0 ? "+" : ""}${s.trend.delta}. Overall investment signal: ${signalLabel(s.overall)}.
 
 Write two short paragraphs. First: where adoption stands and what is breaking. Second: what to do next. Be specific. No preamble.
 
@@ -12731,7 +12741,7 @@ ${compressVoice(voice)}`;
       borderRadius: 20,
       padding: "3px 12px"
     }
-  }, data.signal), data.signal && data.signalWhy && /*#__PURE__*/React.createElement("span", {
+  }, signalLabel(data.signal)), data.signal && data.signalWhy && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       color: T.textMuted
